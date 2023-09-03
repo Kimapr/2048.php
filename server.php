@@ -23,4 +23,5 @@ cgi.assign = (".php" => "/usr/bin/php-cgi")
 index-file.names = ( "index.php" )
 Eof);
 fclose($f);
-system("/usr/sbin/lighttpd -D -f ./http.conf");
+$httpd=getenv("LIGHTTPD")?:"/usr/sbin/lighttpd";
+system("$httpd -D -f ./http.conf");
