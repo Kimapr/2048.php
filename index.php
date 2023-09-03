@@ -24,7 +24,7 @@
 include 'game.php';
 
 ignore_user_abort(true);
-define("DIR", getenv("C2K48_BASE_PATH") ?: "/tmp/c2k48_");
+define("DIR", getenv("C2K48_TMP_PREFIX") ?: "./tmp/c2k48_");
 
 // the handler never runs in practice but not having one makes the script
 // terminate on connection abort. i have no idea why.
@@ -190,7 +190,7 @@ if ($spath == '') {
 		echo "bad\n";
 		return;
 	}
-	$dir = $dir . hash("sha256", $path[0]);
+	$dir = DIR . hash("sha256", $path[0]);
 	$socket = socket_create(AF_UNIX, SOCK_DGRAM, 0);
 	socket_sendto($socket, $path[1], strlen($path[1]), 0, $dir);
 }
