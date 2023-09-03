@@ -13,6 +13,7 @@ case Slide;
 case Merge;
 case Despawn;
 
+case Score;
 case Win;
 case Lose;
 }
@@ -25,6 +26,7 @@ class x1p11 {
 	private $ents;
 	private $won;
 	private $lost;
+	private $score;
 	private $handlers;
 	private function pos($x, $y) {
 		return $this->w * $y + $x;
@@ -85,6 +87,12 @@ class x1p11 {
 				'id' => $src,
 			]);
 			$entdest->value += $entsrc->value;
+			break;
+
+		case BoardEventType::Score:
+			$score=$event->value;
+
+			$this->score+=$score;
 			break;
 
 		case BoardEventType::Despawn:
@@ -160,6 +168,9 @@ class x1p11 {
 							$val😈 = null;
 							$id🥺 = $id😈;
 							$id😈 = -1;
+							$handler(BoardEventType::Score,(object)[
+								'value'=>$val🥺
+							]);
 							if ($check && !$this->won && $val🥺 >= 2048) {
 								$handler(BoardEventType::Win, (object) []);
 							}
@@ -206,6 +217,7 @@ class x1p11 {
 		$this->handlers = new SplObjectStorage();
 		$this->won = false;
 		$this->lost = false;
+		$this->score = 0;
 		$id = 0;
 		for ($i = 0; $i < $w * $h; $i++) {
 			$this->board[] = -1;
@@ -245,6 +257,9 @@ class x1p11 {
 			if ($this->lost) {
 				$handler(BoardEventType::Lose, (object) []);
 			}
+			$handler(BoardEventType::Score,(object)[
+				'value'=>$this->score
+			]);
 		}
 		return $handler;
 	}

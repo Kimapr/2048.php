@@ -10,7 +10,13 @@ class x1p11TextUI {
 	private $lost;
 	private $won;
 	private $score;
-	private function set($x, $y, $v = null, $new = false) {
+	private const STATES=[
+		" ",
+		"new"=>"!",
+		"slide"=>":",
+		"merge"=>"+",
+	];
+	private function set($x, $y, $v = null, $new = 0) {
 		$v = $v == null ? '.' : dechex(log($v, 2));
 		$v = (object) ['v' => $v, 'new' => $new];
 		$this->board[$y][$x] = $v;
@@ -27,7 +33,7 @@ class x1p11TextUI {
 			echo ' ';
 			for ($x = 0; $x < $this->w; $x++) {
 				$v = $this->board[$y][$x];
-				$v = $v->v . ($v->new ? '!' : ' ');
+				$v = $v->v . (self::STATES[$v->new]);
 				echo $v;
 			}
 			echo "\n";
@@ -85,7 +91,7 @@ class x1p11TextUI {
 				$this->set($x, $y);
 				$ent->pos = $event->pos;
 				[$x, $y] = $ent->pos;
-				$this->set($x, $y, $ent->value);
+				$this->set($x, $y, $ent->value, "slide");
 				break;
 			case BoardEventType::Merge:
 				$src = $this->ents[$event->src];
@@ -94,9 +100,11 @@ class x1p11TextUI {
 					'id' => $event->src,
 				]);
 				$dest->value += $src->value;
-				$this->score += $dest->value;
 				[$x, $y] = $dest->pos;
-				$this->set($x, $y, $dest->value);
+				$this->set($x, $y, $dest->value, "merge");
+				break;
+			case BoardEventType::Score:
+				$this->score+=$event->value;
 				break;
 			case BoardEventType::Spawn:
 				$ent = (object) [
@@ -105,7 +113,7 @@ class x1p11TextUI {
 				];
 				$this->ents[$event->id] = $ent;
 				[$x, $y] = $ent->pos;
-				$this->set($x, $y, $ent->value, true);
+				$this->set($x, $y, $ent->value, "new");
 				break;
 			case BoardEventType::Despawn:
 				$ent = $this->ents[$event->id];
