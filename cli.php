@@ -177,7 +177,7 @@ if (isset($argv[3])) {$c = $argv[3];}
 if (!(is_numeric($w) && is_numeric($h) && is_numeric($c))) {
 	echo <<<Eof
 	2048.php CLI. WASD to move.
-	Numbers are displayed as base 2 logarithms.
+	Numbers are displayed as base 2 logarithms in hex.
 	Usage: 2048.php [width [height [initial blocks]]]
 
 	Eof;
