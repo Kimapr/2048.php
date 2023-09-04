@@ -49,8 +49,8 @@ class DTimer {
 		return $dt / 1000_000_000;
 	}
 }
-function appendf (&$s) {return function ($a) use (&$s) {$s .= $a;};}
-function callf(&$f){return function(...$a)use(&$f){return $f(...$a);};}
+function appendf(&$s) {return function ($a) use (&$s) {$s .= $a;};}
+function callf(&$f) {return function (...$a) use (&$f) {return $f(...$a);};}
 
 class StyleMutator {
 	private $current;

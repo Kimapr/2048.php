@@ -25,102 +25,105 @@ class BlockAnims {
 	private $t;
 	//private $loaded;
 	private $game;
-	private static function valcolor($v){
-		return [255,floor(max(200-((log($v,2)/11)**1)*200,0)),floor(max(120-((log($v,2)/11)**1)*120,0))];
+	private static function valcolor($v) {
+		return [255, floor(max(200 - ((log($v, 2) / 11) ** 1) * 200, 0)), floor(max(120 - ((log($v, 2) / 11) ** 1) * 120, 0))];
 	}
-	public function __construct(StyleMutator $stylist, string $name,x1p11 $game,Callable $write) {
-		[$w,$h]=$game->dimensions();
-		$entc=$w*$h;
-		$this->stack=[];
-		$this->name=$name;
+	public function __construct(StyleMutator $stylist, string $name, x1p11 $game, Callable $write) {
+		[$w, $h] = $game->dimensions();
+		$entc = $w * $h;
+		$this->stack = [];
+		$this->name = $name;
 		//$this->loaded=false;
-		$this->game=$game;
-		$this->stylist=$stylist;
+		$this->game = $game;
+		$this->stylist = $stylist;
 		for ($i = 0; $i < $entc; $i++) {
-			$ent=(object)[];
+			$ent = (object) [];
 			$elid = $name . dechex($i);
 			$elem = "<div class=b id=$elid><div>";
-			$ent->name = '#'.$elid;
-			$ent->num = new CursedNumber($stylist,$elid."n",appendf($elem),5);
+			$ent->name = '#' . $elid;
+			$ent->num = new CursedNumber($stylist, $elid . "n", appendf($elem), 5);
 			$ent->vis = false;
-			$ent->real = ['color'=>[0,0,0],'pos'=>[0,0],'z'=>0,'value'=>0];
+			$ent->real = ['color' => [0, 0, 0], 'pos' => [0, 0], 'z' => 0, 'value' => 0];
 			$ent->fake = $ent->real;
 			$elem .= "</div></div>\n";
 			$write($elem);
-			$this->ents[]=$ent;
+			$this->ents[] = $ent;
 		}
 		$this->draw(0);
 		/*$game->attach_handler(function($type,$event){
-			if($this->loaded){
-				//$realm="slide";
-				switch($type){
-				case BoardEventType::Slide:
-					$id=$event->id;
-					$ent=$this->ents[$id];
-					break;
-				case BoardEventType::Merge:
-					break;
-				case BoardEventType::Despawn:
-					throw new Exception("unimplemented");
-					break;
-				case BoardEventType::Spawn:
-					//$realm="spawn";
-					break;
+				if($this->loaded){
+					//$realm="slide";
+					switch($type){
+					case BoardEventType::Slide:
+						$id=$event->id;
+						$ent=$this->ents[$id];
+						break;
+					case BoardEventType::Merge:
+						break;
+					case BoardEventType::Despawn:
+						throw new Exception("unimplemented");
+						break;
+					case BoardEventType::Spawn:
+						//$realm="spawn";
+						break;
+					}
+				}else{
 				}
-			}else{
-			}
-		});
-		$this->loaded=true;*/
+			});
+		*/
 	}
-	private function update(float $dt){
-		if($dt<=0){return;}
-		if(count($this->stack)==0){return;}
-		$this->t+=$dt;
+	private function update(float $dt) {
+		if ($dt <= 0) {return;}
+		if (count($this->stack) == 0) {return;}
+		$this->t += $dt;
 	}
-	public function draw(float $dt){
+	public function draw(float $dt) {
 		//$this->update($dt);
-		$this->game->detach_handler($this->game->attach_handler(function($type,$event){
-			if($type!=BoardEventType::Spawn) {
+		foreach ($this->ents as $id => $ent) {
+			$ent->vis = false;
+		}
+		$this->game->detach_handler($this->game->attach_handler(function ($type, $event) {
+			if ($type != BoardEventType::Spawn) {
 				return;
 			}
-			$value=$event->value;
-			$pos=$event->pos;
-			$ent=$this->ents[$event->id];
-			$ent->vis=true;
-			$ent->real=['color'=>self::valcolor($value),'pos'=>$pos,'z'=>0,'value'=>$value];
-			$ent->fake=$ent->real;
+			$value = $event->value;
+			$pos = $event->pos;
+			$ent = $this->ents[$event->id];
+			$ent->vis = true;
+			$ent->real = ['color' => self::valcolor($value), 'pos' => $pos, 'z' => 0, 'value' => $value];
+			$ent->fake = $ent->real;
 		}));
-		[$w,$h]=$this->game->dimensions();
-		$stylist=$this->stylist;
-		foreach($this->ents as $id=>$ent){
-			$stylist->set($ent->name,"display",$ent->vis?'flex':'none');
-			$stylist->set($ent->name,"z-index",$ent->fake['z']);
-			$stylist->set($ent->name,"justify-content","center");
-			$stylist->set($ent->name,"align-items","center");
-			$stylist->set($ent->name,"position","absolute");
-			$stylist->set($ent->name,"background-color",sprintf("#%02X%02X%02X",...$ent->fake['color']));
-			[$x,$y]=$ent->fake['pos'];
-			$stylist->set($ent->name,"left",sprintf("%f%%",($x/$w)*100));
-			$stylist->set($ent->name,"top",sprintf("%f%%",($y/$w)*100));
-			$stylist->set($ent->name,"width",sprintf("%f%%",(1/$w)*100));
-			$stylist->set($ent->name,"height",sprintf("%f%%",(1/$h)*100));
-			$stylist->set($ent->name,"font-size","2em");
+		[$w, $h] = $this->game->dimensions();
+		$stylist = $this->stylist;
+		foreach ($this->ents as $id => $ent) {
+			$stylist->set($ent->name, "display", $ent->vis ? 'flex' : 'none');
+			$stylist->set($ent->name, "z-index", $ent->fake['z']);
+			$stylist->set($ent->name, "justify-content", "center");
+			$stylist->set($ent->name, "align-items", "center");
+			$stylist->set($ent->name, "position", "absolute");
+			$stylist->set($ent->name, "background-color", sprintf("#%02X%02X%02X", ...$ent->fake['color']));
+			[$x, $y] = $ent->fake['pos'];
+			$stylist->set($ent->name, "left", sprintf("%f%%", ($x / $w) * 100));
+			$stylist->set($ent->name, "top", sprintf("%f%%", ($y / $w) * 100));
+			$stylist->set($ent->name, "width", sprintf("%f%%", (1 / $w) * 100));
+			$stylist->set($ent->name, "height", sprintf("%f%%", (1 / $h) * 100));
+			$stylist->set($ent->name, "font-size", "2em");
 			$ent->num->draw($ent->fake['value']);
 		}
 	}
-	public function mstart(){
-		$this->buf=[];
+	public function mstart() {
+		$this->buf = [];
 	}
-	public function mend(){
-		array_push($this->stack,array_values($this->buf));
+	public function mend() {
+		array_push($this->stack, array_values($this->buf));
 	}
 }
 
-const MOVES=[
-	'u'=>Direction::Up,
-	'd'=>Direction::Down,
-	'l'=>Direction::Left,
-	'r'=>Direction::Right,
+const MOVES = [
+	'u' => Direction::Up,
+	'd' => Direction::Down,
+	'l' => Direction::Left,
+	'r' => Direction::Right,
 ];
 
 function game(&$quitf) {
@@ -142,32 +145,32 @@ function game(&$quitf) {
 	$stwrite = appendf($styles);
 	$stylist = new StyleMutator(callf($stwrite));
 	foreach ([
-		["l", "&lt;",1,2],
-		["d", "v",2,3],
-		["u", "^",2,1],
-		["r", "&gt;",3,2],
-	] as [$cmd, $label,$x,$y]) {
+		["l", "&lt;", 1, 2],
+		["d", "v", 2, 3],
+		["u", "^", 2, 1],
+		["r", "&gt;", 3, 2],
+	] as [$cmd, $label, $x, $y]) {
 		$cons .=
 			"<form method=post action=act/$uid/$cmd id=cb$cmd name=cb$cmd target=out></form>" .
 			"<div class=conbc id=cbd$cmd><button class=conb form=cb$cmd>$label</button></div>";
-		$stylist->set("#cbd$cmd","grid-row-start",$y);
-		$stylist->set("#cbd$cmd","grid-column-start",$x);
+		$stylist->set("#cbd$cmd", "grid-row-start", $y);
+		$stylist->set("#cbd$cmd", "grid-column-start", $x);
 	}
 	$statusl .= "<div>";
 	$tlab = new CursedNumber($stylist, "tcc", appendf($statusl));
-	$statusl .=" fps</div><div id=win>You won!</div><div>score: ";
+	$statusl .= " fps</div><div id=win>You won!</div><div>score: ";
 	$scor = new CursedNumber($stylist, "scc", appendf($statusl));
 	$tlab->draw(0);
 	$scor->draw(0);
-	$game = new x1p11(4,4);
-	$gamer = new BlockAnims($stylist,"gg",$game,appendf($elems));
-	[$w,$h]=$game->dimensions();
+	$game = new x1p11(4, 4);
+	$gamer = new BlockAnims($stylist, "gg", $game, appendf($elems));
+	[$w, $h] = $game->dimensions();
 	$statusl .= "</div>";
 	unset($cmd, $label);
 	$bvalc = 16;
 	unset($i, $elem, $elid, $bval, $bvald, $elnc, $elnid);
-	$stylist->set("#win","display","none");
-	$stylist->set("#die","display","none");
+	$stylist->set("#win", "display", "none");
+	$stylist->set("#die", "display", "none");
 	$stylist->present();
 	$headch = <<<Eof
 	<!DOCTYPE html>
@@ -207,22 +210,22 @@ function game(&$quitf) {
 
 	Eof;
 	unset($styles, $elems, $cons, $statusl);
-	$stwrite='chunk';
+	$stwrite = 'chunk';
 	chunk($headch);
 	$timer = new DTimer();
 	$score = 0;
-	$lost=false;
-	$won=false;
-	$game->attach_handler(function($type,$event)use(&$lost,&$won,&$score){
-		switch($type){
+	$lost = false;
+	$won = false;
+	$game->attach_handler(function ($type, $event) use (&$lost, &$won, &$score) {
+		switch ($type) {
 		case BoardEventType::Score:
-			$score+=$event->value;
+			$score += $event->value;
 			break;
 		case BoardEventType::Win:
-			$won=true;
+			$won = true;
 			break;
 		case BoardEventType::Lose:
-			$lost=true;
+			$lost = true;
 			break;
 		}
 	});
@@ -235,7 +238,7 @@ function game(&$quitf) {
 	while (1) {
 		$dt = $timer->tick();
 		$t += $dt;
-		$tlab->draw(1/$dt);
+		$tlab->draw(1 / $dt);
 		$gamer->draw($dt);
 		$scor->draw($score);
 		$hidt -= $dt;
@@ -249,14 +252,14 @@ function game(&$quitf) {
 		//chunk("<!--".str_repeat("-",4096*1024)."-->"); // stress test
 		$buf = '';
 		while (socket_recv($socket, $buf, 65536, 0) != false) {
-			if(MOVES[$buf]){
+			if (MOVES[$buf]) {
 				$game->move(MOVES[$buf]);
-				if($lost) {
-					$stylist->set("#con","display","none");
-					$stylist->set("#die","display","initial");
+				if ($lost) {
+					$stylist->set("#con", "display", "none");
+					$stylist->set("#die", "display", "initial");
 				}
-				if($won) {
-					$stylist->set("#win","display","initial");
+				if ($won) {
+					$stylist->set("#win", "display", "initial");
 				}
 			}
 		}
@@ -268,7 +271,7 @@ function game(&$quitf) {
 		if ($tod <= 0) {
 			//break;
 		}
-		usleep(floor(max($tt-$dt,0)));
+		usleep(floor(max($tt - $dt, 0)));
 		//if(--$ii==0){ break; }
 	}
 	chunk(<<<Eof

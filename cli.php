@@ -53,7 +53,7 @@ class x1p11TextUI {
 		/*
 			// Debug
 			$this->game->attach_handler(function ($type, $event) {
-				//* //noise
+				/* //noise
 					echo "Event: ";
 					print_r($type->name);
 					echo "\n";
@@ -67,22 +67,25 @@ class x1p11TextUI {
 			});
 			$deleting = [];
 			$this->game->detach_handler($this->game->attach_handler(function ($type, $event) use (&$deleting) {
+				if($type!=BoardEventType::Spawn){
+					return;
+				}
 				$deleting[] = $event->pos;
 			}));
 			foreach ($deleting as [$x, $y]) {
 				$this->game->set($x, $y);
 			}
 			foreach ([
-				[10, 10, 3, 4],
-				[2, 1, 2, 5],
-				[1, 2, 1, 2],
-				[2, 1, 2, 1],
+				[4, 5, 6, 4],
+				[1, 4, 2, 2],
+				[2, 3, 0, 2],
+				[0, 0, 0, 0],
 			] as $y => $row) {
 				foreach ($row as $x => $v) {
-					$this->game->set($x, $y, 2 ** $v);
+					$this->game->set($x, $y, $v>0?(2 ** $v):null);
 				}
 			}
-		*/
+		//*/
 		$this->game->attach_handler($handler = function ($type, $event) use (&$handler) {
 			switch ($type) {
 			case BoardEventType::Slide:
