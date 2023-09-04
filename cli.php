@@ -10,11 +10,11 @@ class x1p11TextUI {
 	private $lost;
 	private $won;
 	private $score;
-	private const STATES=[
+	private const STATES = [
 		" ",
-		"new"=>"!",
-		"slide"=>":",
-		"merge"=>"+",
+		"new" => "!",
+		"slide" => ":",
+		"merge" => "+",
 	];
 	private function set($x, $y, $v = null, $new = 0) {
 		$v = $v == null ? '.' : dechex(log($v, 2));
@@ -104,7 +104,7 @@ class x1p11TextUI {
 				$this->set($x, $y, $dest->value, "merge");
 				break;
 			case BoardEventType::Score:
-				$this->score+=$event->value;
+				$this->score += $event->value;
 				break;
 			case BoardEventType::Spawn:
 				$ent = (object) [

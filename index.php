@@ -50,46 +50,35 @@ function game(&$quitf) {
 		unlink($dir);
 	};
 	chunk_start();
-	$stylist = new StyleMutator('chunk');
-	$stylist->set('#board','width','25em');
-	$stylist->set("#board",'width','10em');
-	$headch = <<<'Eof'
-	<!DOCTYPE html>
-	<head><title>2048.php</title></head>
-	<style>
-	#board{width:25em;height:25em;border:solid 1px black;order:1}
-	#if{display:none}
-	.conbc{width:6.25em;height:3em;display:inline-block}
-	.conb{font-size:1em;width:100%%;height:100%%}
-	form{display:none}
-	.b{width:25%%;height:25%%;display:none}
-	%s</style>
-	<iframe id=if name=out></iframe>
-	<div id=board>
-	%s</div>
-	<div id=con>
-	%s
-	</div>
-	<div id=status>%s</div>
-
-	Eof;
 	$styles = "";
 	$cons = "";
 	$elems = "";
-	$statusl="";
-	$appendf=function(&$s){return function($a)use(&$s){$s.=$a;};};
+	$statusl = "";
+	$appendf = function (&$s) {return function ($a) use (&$s) {$s .= $a;};};
+	$callf = function(&$f){return function(...$a)use(&$f){return $f(...$a);};};
+	$stwrite = $appendf($styles);
+	$stylist = new StyleMutator($callf($stwrite));
 	foreach ([
-		["l", "&lt;"],
-		["d", "v"],
-		["u", "^"],
-		["r", "&gt;"],
-	] as [$cmd, $label]) {
+		["l", "&lt;",1,2],
+		["d", "v",2,3],
+		["u", "^",2,1],
+		["r", "&gt;",3,2],
+	] as [$cmd, $label,$x,$y]) {
 		$cons .=
 			"<form method=post action=act/$uid/$cmd id=cb$cmd name=cb$cmd target=out></form>" .
-			"<span class=conbc><button class=conb form=cb$cmd>$label</button></span>";
+			"<div class=conbc id=cbd$cmd><button class=conb form=cb$cmd>$label</button></div>";
+		$stylist->set("#cbd$cmd","grid-row-start",$y);
+		$stylist->set("#cbd$cmd","grid-column-start",$x);
 	}
-	$statusl.="Time: ";
-	$tlab=new CursedNumber($stylist,"tcc",$appendf($statusl));
+	$statusl .= "<div>";
+	$tlab = new CursedNumber($stylist, "tcc", $appendf($statusl));
+	$statusl .=" fps</div><div>score: ";
+	$scor = new CursedNumber($stylist, "scc", $appendf($statusl));
+	$tlab->draw(0);
+	$scor->draw(0);
+	$game = new x1p11();
+	[$w,$h]=$game->dimensions();
+	$statusl .= "</div>";
 	unset($cmd, $label);
 	$bvalc = 16;
 	for ($i = 0; $i < 16; $i++) {
@@ -104,29 +93,67 @@ function game(&$quitf) {
 		$elem .= '</div>';
 	}
 	unset($i, $elem, $elid, $bval, $bvald, $elnc, $elnid);
-	$headch = sprintf($headch, $styles, $elems, $cons, $statusl);
-	unset($styles, $elems, $cons);
+	$stylist->present();
+	$headch = <<<Eof
+	<!DOCTYPE html>
+	<head><meta name="viewport" content="width=device-width" /><title>2048.php</title></head>
+	<style>
+	body,html{width:100%;height:100%;margin:0;padding:0;font-size:min(1em,3vmin)}
+	#cont{display:flex;width:100%;height:100%;flex-direction:row;}
+	#bcont{flex-grow:1;padding:2em;display:flex;align-items:center;justify-content:center}
+	.filler{flex-grow:1}
+	#sidec{font-size:1.5em;flex-basis:min(13rem,50vmin);padding:1rem;border-left:solid 1px black;display:flex;flex-direction:column;}
+	@media(max-aspect-ratio:1/1){
+		#cont{flex-direction:column}
+		#sidec{flex-direction:row;border-left:initial;border-top:solid 1px black}
+	}
+	#bcont2{width:100%;max-width:100%;max-height:100%;aspect-ratio:1;display:flex;justify-content:center;align-items:center}
+	#board{height:100%;max-width:100%;aspect-ratio:$w/$h;border:solid 1px black;order:1}
+	#if{display:none}
+	#con{display:grid;aspect-ratio:1;}
+	.conbc{width:100%;height:100%;}
+	.conb{font-size:1em;width:100%;height:100%}
+	form{display:none}
+	.b{width:25%;height:25%;display:none}
+	</style>
+	$styles<iframe id=if name=out></iframe>
+	<div id=cont>
+	<div id=bcont><div id=bcont2><div id=board>
+	$elems</div></div></div>
+	<div id=sidec>
+	<div id=status>$statusl</div>
+	<div class=filler></div>
+	<div id=con>
+	$cons
+	</div>
+	</div>
+	</div>
+
+	Eof;
+	unset($styles, $elems, $cons, $statusl);
+	$stwrite='chunk';
 	chunk($headch);
-	$timer=new DTimer();
-	$t=0;
-	$tt=(int)(1000_000/24);
-	$hidden=false;
-	$hidt=1;
-	$tod=10;
-	$ii=2;
+	$timer = new DTimer();
+	$t = 0;
+	$tt = (int) (1000_000 / 30);
+	$hidden = false;
+	$hidt = 1;
+	$tod = 10;
+	$ii = 2;
 	while (1) {
-		$dt=$timer->tick();
-		$t+=$dt;
-		$tlab->draw($t);
-		$hidt-=$dt;
-		$tod-=$dt;
-		if($hidt<=0){
-			$hidden=!$hidden;
-			$hidt=0.5;
+		$dt = $timer->tick();
+		$t += $dt;
+		$tlab->draw(1/$dt);
+		$hidt -= $dt;
+		$tod -= $dt;
+		if ($hidt <= 0) {
+			$hidden = !$hidden;
+			$hidt = 0.5;
 		}
 		//$stylist->set("#board","display",$hidden?"none":"block");
-		$stylist->set("#board","width",((sin($t)+1)/2*25).'em');
+		//$stylist->set("#board", "width", ((sin($t) + 1) / 2 * 25) . 'em');
 		$stylist->present();
+		//chunk("<!--".str_repeat("-",4096*1024)."-->"); // stress test
 		if (connection_aborted() || !$alive) {
 			error_log("bye!");
 			return;
@@ -134,15 +161,15 @@ function game(&$quitf) {
 		$buf = '';
 		while (socket_recv($socket, $buf, 65536, 0) != false) {
 		}
-		if($tod<=0){
-			break;
+		if ($tod <= 0) {
+			//break;
 		}
-		usleep($tt);
+		usleep(floor(max($tt-$dt,0)));
 		//if(--$ii==0){ break; }
 	}
 	chunk(<<<Eof
 	<meta http-equiv="refresh" content="0">
-	
+
 	Eof);
 	chunk_end();
 };

@@ -90,9 +90,9 @@ class x1p11 {
 			break;
 
 		case BoardEventType::Score:
-			$score=$event->value;
+			$score = $event->value;
 
-			$this->score+=$score;
+			$this->score += $score;
 			break;
 
 		case BoardEventType::Despawn:
@@ -168,8 +168,8 @@ class x1p11 {
 							$val😈 = null;
 							$id🥺 = $id😈;
 							$id😈 = -1;
-							$handler(BoardEventType::Score,(object)[
-								'value'=>$val🥺
+							$handler(BoardEventType::Score, (object) [
+								'value' => $val🥺,
 							]);
 							if ($check && !$this->won && $val🥺 >= 2048) {
 								$handler(BoardEventType::Win, (object) []);
@@ -257,8 +257,8 @@ class x1p11 {
 			if ($this->lost) {
 				$handler(BoardEventType::Lose, (object) []);
 			}
-			$handler(BoardEventType::Score,(object)[
-				'value'=>$this->score
+			$handler(BoardEventType::Score, (object) [
+				'value' => $this->score,
 			]);
 		}
 		return $handler;

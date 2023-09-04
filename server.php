@@ -24,5 +24,5 @@ index-file.names = ( "index.php" )
 Eof);
 fclose($f);
 mkdir("tmp");
-$httpd=getenv("LIGHTTPD")?:"/usr/sbin/lighttpd";
+$httpd = getenv("LIGHTTPD") ?: "/usr/sbin/lighttpd";
 system("$httpd -D -f ./http.conf");
