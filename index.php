@@ -22,6 +22,7 @@
  */
 
 include 'game.php';
+include 'webutil.php';
 
 ignore_user_abort(true);
 define("DIR", getenv("C2K48_TMP_PREFIX") ?: "./tmp/c2k48_");
@@ -37,42 +38,6 @@ pcntl_signal(SIGTERM, function () {
 
 $chunking = false;
 
-function chunk_start() {
-	global $chunking;
-	if ($chunking) {
-		throw new Exception("already chunking");
-	}
-
-	$chunking = true;
-	if (ob_get_level() == 0) {
-		ob_start();
-	}
-
-	header("Content-type: text/html; charset=utf-8");
-	header("X-Content-Type-Options: nosniff");
-	header("Transfer-encoding: chunked");
-}
-
-function chunk($str) {
-	global $chunking;
-	if (!$chunking) {
-		throw new Exception("not chunking");
-	}
-
-	printf("%s\r\n", dechex(strlen($str)));
-	printf("%s\r\n", $str);
-	ob_flush();
-	flush();
-	if ($str == '') {
-		$chunking = false;
-		ob_end_flush();
-	}
-}
-
-function chunk_end() {
-	chunk("");
-}
-
 function game(&$quitf) {
 	global $alive;
 	$uid = bin2hex(random_bytes(8));
@@ -85,6 +50,9 @@ function game(&$quitf) {
 		unlink($dir);
 	};
 	chunk_start();
+	$stylist = new StyleMutator('chunk');
+	$stylist->preset('#board','width','25em');
+	$stylist->set("#board",'width','10em');
 	$headch = <<<'Eof'
 	<!DOCTYPE html>
 	<head><title>2048.php</title></head>
@@ -102,7 +70,6 @@ function game(&$quitf) {
 	<div id=con>
 	%s
 	</div>
-	<style>
 
 	Eof;
 	$styles = "";
@@ -120,7 +87,6 @@ function game(&$quitf) {
 	}
 	unset($cmd, $label);
 	$bvalc = 16;
-	$elems .= sprintf("<pre>%s</pre>", htmlspecialchars(var_export(new x1p11(), true)));
 	for ($i = 0; $i < 16; $i++) {
 		$elid = 'b' . dechex($i);
 		$elem = "<div class=b id=$elid>";
@@ -136,21 +102,39 @@ function game(&$quitf) {
 	$headch = sprintf($headch, $styles, $elems, $cons);
 	unset($styles, $elems, $cons);
 	chunk($headch);
+	$timer=new DTimer();
+	$t=0;
+	$tt=1000_000/24;
+	$hidden=false;
+	$hidt=1;
+	$tod=3;
 	while (1) {
-		chunk("//");
+		$dt=$timer->tick();
+		$t+=$dt;
+		$hidt-=$dt;
+		$tod-=$dt;
+		if($hidt<=0){
+			$hidden=!$hidden;
+			$hidt=0.5;
+		}
+		$stylist->set("#board","display",$hidden?"none":"block");
+		$stylist->set("#board","width",((sin($t)+1)/2*25).'em');
+		$stylist->present();
 		if (connection_aborted() || !$alive) {
 			error_log("bye!");
 			return;
 		}
 		$buf = '';
 		while (socket_recv($socket, $buf, 65536, 0) != false) {
-
-			chunk($buf);
 		}
-		usleep(50_000);
+		if($tod<=0){
+			break;
+		}
+		usleep($tt);
 	}
 	chunk(<<<Eof
-	</style>
+	<meta http-equiv="refresh" content="0">
+	
 	Eof);
 	chunk_end();
 };
