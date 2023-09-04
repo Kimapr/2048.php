@@ -1,26 +1,4 @@
 <?php
-/*
- *  -!- 2048.php -!-
- *
- *   Made of cursed hacks and elephant tears.
- *   Will not function on Windows systems due to the lack of Unix domain socket
- * support. WAMP is not real.
- *   Requires a web server that:
- *   - is capable of processing multiple requests in parallel.
- *   - returns the chunked response to the client as-is, without buffering.
- *
- *   Example lighttpd config (this script is located at /path/to/www/index.php):
- *
- *      server.document-root = "/path/to/www/"
- *      server.port = 4444
- *      server.stream-response-body = 2
- *      server.modules += ( "mod_cgi", "mod_rewrite" )
- *      url.rewrite-once = ( "^/(.*)" => "/" )
- *      cgi.assign = ( ".php" => "/usr/bin/php-cgi" )
- *      index-file.names = ( "index.php" )
- *
- */
-
 include 'game.php';
 include 'webutil.php';
 
@@ -38,6 +16,113 @@ pcntl_signal(SIGTERM, function () {
 
 $chunking = false;
 
+class BlockAnims {
+	private $stylist;
+	private $stack;
+	private $buf;
+	private $name;
+	private $ents;
+	private $t;
+	//private $loaded;
+	private $game;
+	private static function valcolor($v){
+		return [255,floor(max(200-((log($v,2)/11)**1)*200,0)),floor(max(120-((log($v,2)/11)**1)*120,0))];
+	}
+	public function __construct(StyleMutator $stylist, string $name,x1p11 $game,Callable $write) {
+		[$w,$h]=$game->dimensions();
+		$entc=$w*$h;
+		$this->stack=[];
+		$this->name=$name;
+		//$this->loaded=false;
+		$this->game=$game;
+		$this->stylist=$stylist;
+		for ($i = 0; $i < $entc; $i++) {
+			$ent=(object)[];
+			$elid = $name . dechex($i);
+			$elem = "<div class=b id=$elid><div>";
+			$ent->name = '#'.$elid;
+			$ent->num = new CursedNumber($stylist,$elid."n",appendf($elem),5);
+			$ent->vis = false;
+			$ent->real = ['color'=>[0,0,0],'pos'=>[0,0],'z'=>0,'value'=>0];
+			$ent->fake = $ent->real;
+			$elem .= "</div></div>\n";
+			$write($elem);
+			$this->ents[]=$ent;
+		}
+		$this->draw(0);
+		/*$game->attach_handler(function($type,$event){
+			if($this->loaded){
+				//$realm="slide";
+				switch($type){
+				case BoardEventType::Slide:
+					$id=$event->id;
+					$ent=$this->ents[$id];
+					break;
+				case BoardEventType::Merge:
+					break;
+				case BoardEventType::Despawn:
+					throw new Exception("unimplemented");
+					break;
+				case BoardEventType::Spawn:
+					//$realm="spawn";
+					break;
+				}
+			}else{
+			}
+		});
+		$this->loaded=true;*/
+	}
+	private function update(float $dt){
+		if($dt<=0){return;}
+		if(count($this->stack)==0){return;}
+		$this->t+=$dt;
+	}
+	public function draw(float $dt){
+		//$this->update($dt);
+		$this->game->detach_handler($this->game->attach_handler(function($type,$event){
+			if($type!=BoardEventType::Spawn) {
+				return;
+			}
+			$value=$event->value;
+			$pos=$event->pos;
+			$ent=$this->ents[$event->id];
+			$ent->vis=true;
+			$ent->real=['color'=>self::valcolor($value),'pos'=>$pos,'z'=>0,'value'=>$value];
+			$ent->fake=$ent->real;
+		}));
+		[$w,$h]=$this->game->dimensions();
+		$stylist=$this->stylist;
+		foreach($this->ents as $id=>$ent){
+			$stylist->set($ent->name,"display",$ent->vis?'flex':'none');
+			$stylist->set($ent->name,"z-index",$ent->fake['z']);
+			$stylist->set($ent->name,"justify-content","center");
+			$stylist->set($ent->name,"align-items","center");
+			$stylist->set($ent->name,"position","absolute");
+			$stylist->set($ent->name,"background-color",sprintf("#%02X%02X%02X",...$ent->fake['color']));
+			[$x,$y]=$ent->fake['pos'];
+			$stylist->set($ent->name,"left",sprintf("%f%%",($x/$w)*100));
+			$stylist->set($ent->name,"top",sprintf("%f%%",($y/$w)*100));
+			$stylist->set($ent->name,"width",sprintf("%f%%",(1/$w)*100));
+			$stylist->set($ent->name,"height",sprintf("%f%%",(1/$h)*100));
+			$stylist->set($ent->name,"font-size","2em");
+			$ent->num->draw($ent->fake['value']);
+		}
+	}
+	public function mstart(){
+		$this->buf=[];
+	}
+	public function mend(){
+		array_push($this->stack,array_values($this->buf));
+	}
+}
+
+const MOVES=[
+	'u'=>Direction::Up,
+	'd'=>Direction::Down,
+	'l'=>Direction::Left,
+	'r'=>Direction::Right,
+];
+
 function game(&$quitf) {
 	global $alive;
 	$uid = bin2hex(random_bytes(8));
@@ -54,10 +139,8 @@ function game(&$quitf) {
 	$cons = "";
 	$elems = "";
 	$statusl = "";
-	$appendf = function (&$s) {return function ($a) use (&$s) {$s .= $a;};};
-	$callf = function(&$f){return function(...$a)use(&$f){return $f(...$a);};};
-	$stwrite = $appendf($styles);
-	$stylist = new StyleMutator($callf($stwrite));
+	$stwrite = appendf($styles);
+	$stylist = new StyleMutator(callf($stwrite));
 	foreach ([
 		["l", "&lt;",1,2],
 		["d", "v",2,3],
@@ -71,28 +154,20 @@ function game(&$quitf) {
 		$stylist->set("#cbd$cmd","grid-column-start",$x);
 	}
 	$statusl .= "<div>";
-	$tlab = new CursedNumber($stylist, "tcc", $appendf($statusl));
-	$statusl .=" fps</div><div>score: ";
-	$scor = new CursedNumber($stylist, "scc", $appendf($statusl));
+	$tlab = new CursedNumber($stylist, "tcc", appendf($statusl));
+	$statusl .=" fps</div><div id=win>You won!</div><div>score: ";
+	$scor = new CursedNumber($stylist, "scc", appendf($statusl));
 	$tlab->draw(0);
 	$scor->draw(0);
-	$game = new x1p11();
+	$game = new x1p11(4,4);
+	$gamer = new BlockAnims($stylist,"gg",$game,appendf($elems));
 	[$w,$h]=$game->dimensions();
 	$statusl .= "</div>";
 	unset($cmd, $label);
 	$bvalc = 16;
-	for ($i = 0; $i < 16; $i++) {
-		$elid = 'b' . dechex($i);
-		$elem = "<div class=b id=$elid>";
-		for ($bval = 0; $bval < 16; $bval++) {
-			$bvald = 2 ** ($bval + 1);
-			$elnc = 'n' . dechex($bval);
-			$elnid = $elid . 'n' . $elnc;
-			$elem .= "<div class=$elnc id=$elnid>$elnc</div>";
-		}
-		$elem .= '</div>';
-	}
 	unset($i, $elem, $elid, $bval, $bvald, $elnc, $elnid);
+	$stylist->set("#win","display","none");
+	$stylist->set("#die","display","none");
 	$stylist->present();
 	$headch = <<<Eof
 	<!DOCTYPE html>
@@ -107,14 +182,15 @@ function game(&$quitf) {
 		#cont{flex-direction:column}
 		#sidec{flex-direction:row;border-left:initial;border-top:solid 1px black}
 	}
-	#bcont2{width:100%;max-width:100%;max-height:100%;aspect-ratio:1;display:flex;justify-content:center;align-items:center}
-	#board{height:100%;max-width:100%;aspect-ratio:$w/$h;border:solid 1px black;order:1}
+	#bcont2{container-name:bbox;container-type:size;width:100%;height:100%;display:flex;justify-content:center;align-items:center}
+	#board{aspect-ratio:$w/$h;border:solid 1px black;position:relative}
+	@container bbox (max-aspect-ratio:$w/$h) {#board{width:100%}}
+	@container bbox not (max-aspect-ratio:$w/$h) {#board{height:100%}}
 	#if{display:none}
 	#con{display:grid;aspect-ratio:1;}
 	.conbc{width:100%;height:100%;}
 	.conb{font-size:1em;width:100%;height:100%}
 	form{display:none}
-	.b{width:25%;height:25%;display:none}
 	</style>
 	$styles<iframe id=if name=out></iframe>
 	<div id=cont>
@@ -123,7 +199,7 @@ function game(&$quitf) {
 	<div id=sidec>
 	<div id=status>$statusl</div>
 	<div class=filler></div>
-	<div id=con>
+	<span id=die>Game over.</span><div id=con>
 	$cons
 	</div>
 	</div>
@@ -134,6 +210,22 @@ function game(&$quitf) {
 	$stwrite='chunk';
 	chunk($headch);
 	$timer = new DTimer();
+	$score = 0;
+	$lost=false;
+	$won=false;
+	$game->attach_handler(function($type,$event)use(&$lost,&$won,&$score){
+		switch($type){
+		case BoardEventType::Score:
+			$score+=$event->value;
+			break;
+		case BoardEventType::Win:
+			$won=true;
+			break;
+		case BoardEventType::Lose:
+			$lost=true;
+			break;
+		}
+	});
 	$t = 0;
 	$tt = (int) (1000_000 / 30);
 	$hidden = false;
@@ -144,6 +236,8 @@ function game(&$quitf) {
 		$dt = $timer->tick();
 		$t += $dt;
 		$tlab->draw(1/$dt);
+		$gamer->draw($dt);
+		$scor->draw($score);
 		$hidt -= $dt;
 		$tod -= $dt;
 		if ($hidt <= 0) {
@@ -152,14 +246,24 @@ function game(&$quitf) {
 		}
 		//$stylist->set("#board","display",$hidden?"none":"block");
 		//$stylist->set("#board", "width", ((sin($t) + 1) / 2 * 25) . 'em');
-		$stylist->present();
 		//chunk("<!--".str_repeat("-",4096*1024)."-->"); // stress test
+		$buf = '';
+		while (socket_recv($socket, $buf, 65536, 0) != false) {
+			if(MOVES[$buf]){
+				$game->move(MOVES[$buf]);
+				if($lost) {
+					$stylist->set("#con","display","none");
+					$stylist->set("#die","display","initial");
+				}
+				if($won) {
+					$stylist->set("#win","display","initial");
+				}
+			}
+		}
+		$stylist->present();
 		if (connection_aborted() || !$alive) {
 			error_log("bye!");
 			return;
-		}
-		$buf = '';
-		while (socket_recv($socket, $buf, 65536, 0) != false) {
 		}
 		if ($tod <= 0) {
 			//break;
