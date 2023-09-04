@@ -65,28 +65,40 @@ class StyleMutator {
 		$this->write=$write;
 	}
 	public function set($i,$k,$v){
+		$wasset=isset($this->dirty[$k]);
 		$this->dirty[$k][$i]=$v;
 		if(isset($this->current[$k][$i])&&$this->current[$k][$i]==$v) {
-			unset($this->dirty[$k]);
+			if($wasset){
+				//print("clear $i $k $v\n");
+			}
+			unset($this->dirty[$k][$i]);
+		} else {
+		//	print("set $i $k $v\n");
+		//	echo "afsd: ";print_r($this->dirty);
 		}
+
 	}
 	public function present(){
 		$str="<style>%s</style>\n";
 		$byval=[];
+		//echo 'diety: ';print_r($this->dirty);
 		foreach($this->dirty as $k=>$l) {
 			foreach($l as $i=>$v) {
 				$byval[$k.":".$v][]=$i;
 			}
 		}
+		//echo 'byval: ';print_r($byval);
 		foreach($byval as $v=>$l){
 			$byval[$v]=sprintf("%s{%s}",implode(',',$l),$v);
 		}
+		//echo 'byval2: ';print_r($byval);
 		($this->write)(sprintf($str,implode('',$byval)));
 		foreach($this->dirty as $k=>$l) {
 			foreach($l as $i=>$v) {
 				$this->current[$k][$i]=$v;
 			}
 		}
+		$this->dirty=[];
 		return true;
 	}
 }
@@ -117,7 +129,7 @@ const SI_SMALLER=[
 
 function fnumfitweak($n,$m) {
 	$dd=max($m-strlen(sprintf("%.0f",$n))-1,0);
-	$s=rtrim(sprintf("%.${dd}f",$n),".0");
+	$s=rtrim(sprintf("%.{$dd}f",$n),".0");
 	return $s==''?'0':$s;
 }
 
@@ -147,32 +159,62 @@ function fnumfit($n,$m) {
 class CursedNumber {
 	private $stylist;
 	private $maxlen;
-	
-	public function __construct(?StyleMutator $stylist=null,?string $name=null,?Callable $write=null,int $maxlen=5){
-		$this->stylist=$stylist;
+	private $name;
+	private const DIGITS=[0,1,2,3,4,5,6,7,8,9,'.'=>'s'];
+	public function __construct(?StyleMutator &$stylist=null,?string $name=null,?Callable $write=null,int $maxlen=5){
+		$this->stylist=&$stylist;
 		$this->maxlen=$maxlen;
 		if(isset($stylist)){
 			if(!(isset($name)&&isset($write))){
 				throw new Exception("invalid argument");
 			}
+			$this->name=$name;
 			$str="<span id=$name>";
+			$state="none";
 			for($i=0;$i<$maxlen;$i++){
-				for($d=0;$d<10;$d++){
-					$str.="<span id=${name}n${i}d${d}>${d}</span>";
+				foreach(self::DIGITS as $v=>$d) {
+					$en=$this->elname('d',$i,$d);
+					$str.="<span id=$en>$v</span>";
+					$this->stylist->set('#'.$en,"display",$state);
 				}
-				$str.="<span id=${name}n${i}s>.</span>";
 			}
-			foreach([...SI_BIGGER,...SI_SMALLER] as $v){
-				$str.="<span id=${name}p${v}>${v}</span>";
+			foreach([...SI_BIGGER,...SI_SMALLER] as [$d,$v]){
+				$en=$this->elname('p',$d);
+				$str.="<span id=$en>$d</span>";
+				$this->stylist->set('#'.$en,"display",$state);
 			}
 			$str.="</span>";
+			$write($str);
+		}
+	}
+	private function elname($type,...$l) {
+		$name=$this->name;
+		switch($type){
+		case "d":
+			return "{$name}n{$l[0]}{$l[1]}";
+		case "p":
+			return "{$name}p{$l[0]}";
 		}
 	}
 	public function draw($n){
 		$n=fnumfit($n,$this->maxlen);
-		for($i=0;$i<$maxlen;$i++) {
-			for($d=0;$d<10;$d++) {
+		for($i=0;$i<$this->maxlen;$i++) {
+			foreach(self::DIGITS as $v=>$d) {
+				$en=$this->elname('d',$i,$d);
+				$state="none";
+				if(isset($n[0][$i])&&$n[0][$i]==$v) {
+					$state="initial";
+				}
+				$this->stylist->set('#'.$en,"display",$state);
 			}
+		}
+		foreach([...SI_BIGGER,...SI_SMALLER] as [$d,$v]){
+			$en=$this->elname('p',$d);
+			$state="none";
+			if($n[1]==$d){
+				$state="initial";
+			}
+			$this->stylist->set('#'.$en,"display",$state);
 		}
 	}
 }

@@ -51,7 +51,7 @@ function game(&$quitf) {
 	};
 	chunk_start();
 	$stylist = new StyleMutator('chunk');
-	$stylist->preset('#board','width','25em');
+	$stylist->set('#board','width','25em');
 	$stylist->set("#board",'width','10em');
 	$headch = <<<'Eof'
 	<!DOCTYPE html>
@@ -70,11 +70,14 @@ function game(&$quitf) {
 	<div id=con>
 	%s
 	</div>
+	<div id=status>%s</div>
 
 	Eof;
 	$styles = "";
 	$cons = "";
 	$elems = "";
+	$statusl="";
+	$appendf=function(&$s){return function($a)use(&$s){$s.=$a;};};
 	foreach ([
 		["l", "&lt;"],
 		["d", "v"],
@@ -85,6 +88,8 @@ function game(&$quitf) {
 			"<form method=post action=act/$uid/$cmd id=cb$cmd name=cb$cmd target=out></form>" .
 			"<span class=conbc><button class=conb form=cb$cmd>$label</button></span>";
 	}
+	$statusl.="Time: ";
+	$tlab=new CursedNumber($stylist,"tcc",$appendf($statusl));
 	unset($cmd, $label);
 	$bvalc = 16;
 	for ($i = 0; $i < 16; $i++) {
@@ -99,25 +104,27 @@ function game(&$quitf) {
 		$elem .= '</div>';
 	}
 	unset($i, $elem, $elid, $bval, $bvald, $elnc, $elnid);
-	$headch = sprintf($headch, $styles, $elems, $cons);
+	$headch = sprintf($headch, $styles, $elems, $cons, $statusl);
 	unset($styles, $elems, $cons);
 	chunk($headch);
 	$timer=new DTimer();
 	$t=0;
-	$tt=1000_000/24;
+	$tt=(int)(1000_000/24);
 	$hidden=false;
 	$hidt=1;
-	$tod=3;
+	$tod=10;
+	$ii=2;
 	while (1) {
 		$dt=$timer->tick();
 		$t+=$dt;
+		$tlab->draw($t);
 		$hidt-=$dt;
 		$tod-=$dt;
 		if($hidt<=0){
 			$hidden=!$hidden;
 			$hidt=0.5;
 		}
-		$stylist->set("#board","display",$hidden?"none":"block");
+		//$stylist->set("#board","display",$hidden?"none":"block");
 		$stylist->set("#board","width",((sin($t)+1)/2*25).'em');
 		$stylist->present();
 		if (connection_aborted() || !$alive) {
@@ -131,6 +138,7 @@ function game(&$quitf) {
 			break;
 		}
 		usleep($tt);
+		//if(--$ii==0){ break; }
 	}
 	chunk(<<<Eof
 	<meta http-equiv="refresh" content="0">
