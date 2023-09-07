@@ -7,15 +7,15 @@ case Up = 2;
 case Right = 3;
 }
 
-enum BoardEventType {
-case Spawn;
-case Slide;
-case Merge;
-case Despawn;
+enum BoardEventType: int {
+case Spawn=0;
+case Slide=1;
+case Merge=2;
+case Despawn=3;
 
-case Score;
-case Win;
-case Lose;
+case Score=4;
+case Win=5;
+case Lose=6;
 }
 
 class x1p11 {

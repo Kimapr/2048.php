@@ -36,19 +36,53 @@ function chunk_end() {
 	chunk("");
 }
 
+function obcapture(Callable $f) {
+	ob_start();
+	$f();
+	return ob_get_clean();
+}
+
 class DTimer {
 	private $last;
 	public function __construct() {
 		$this->last = 0;
 		$this->tick();
 	}
-	public function tick() {
+	public function tick(bool $soft=false) {
 		$cur = hrtime(true);
 		$dt = $cur - $this->last;
-		$this->last = $cur;
+		if(!$soft){
+			$this->last = $cur;
+		}
 		return $dt / 1000_000_000;
 	}
 }
+
+class Averager {
+	private $v,$w,$n;
+	public function __construct(){
+		$this->l=null;
+	}
+	public function push($v,$w){
+		$l=new self;
+		[$l->v,$l->w,$l->n]=[$v,$w,$this->n];
+		$this->n=$l;
+	}
+	public function avg($maxw) {
+		$w=0;$v=0;
+		for($l=$this->n;isset($l);$l=$l->n){
+			$lw=min($l->w,$maxw-$w);
+			$w+=$lw;
+			$v+=$l->v*$lw;
+			if($w>=$maxw){
+				$l->n=null;
+				break;
+			}
+		}
+		return $v/$w;
+	}
+}
+
 function appendf(&$s) {return function ($a) use (&$s) {$s .= $a;};}
 function callf(&$f) {return function (...$a) use (&$f) {return $f(...$a);};}
 
@@ -72,7 +106,7 @@ class StyleMutator {
 			unset($this->dirty[$k][$i]);
 		}
 	}
-	public function present() {
+	public function present($force=false) {
 		$str = "<style>%s</style>\n";
 		$byval = [];
 		foreach ($this->dirty as $k => $l) {
@@ -83,14 +117,23 @@ class StyleMutator {
 		foreach ($byval as $v => $l) {
 			$byval[$v] = sprintf("%s{%s}", implode(',', $l), $v);
 		}
-		($this->write)(sprintf($str, implode('', $byval)));
+		$byval=implode('',$byval);
+		$written=false;
+		if(strlen($byval)>0){
+			($this->write)(sprintf($str, $byval));
+			$written=true;
+		}
+		if($force&&!$written){
+			($this->write)("<!---->\n");
+			$written=true;
+		}
 		foreach ($this->dirty as $k => $l) {
 			foreach ($l as $i => $v) {
 				$this->current[$k][$i] = $v;
 			}
 		}
 		$this->dirty = [];
-		return true;
+		return $written;
 	}
 }
 
@@ -118,9 +161,12 @@ const SI_SMALLER = [
 	['q', 1000 ** -9],
 ];
 
-function fnumfitweak($n, $m) {
-	$dd = max($m - strlen(sprintf("%.0f", $n)) - 1, 0);
-	$s = rtrim(sprintf("%.{$dd}f", $n), ".0");
+function fnumfitweak($n, $m, $trim=true) {
+	$dd = max($m - strlen(sprintf("%.0f", floor($n))) - 1, 0);
+	$s = sprintf("%.{$dd}f", $n);
+	if($trim) {
+		$s = rtrim(preg_replace('/(\.)([0-9]*?)(0*)$/','\1\2',$s),'.');
+	}
 	return $s == '' ? '0' : $s;
 }
 

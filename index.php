@@ -3,6 +3,7 @@ include 'game.php';
 include 'webutil.php';
 
 ignore_user_abort(true);
+set_time_limit(0);
 define("DIR", getenv("C2K48_TMP_PREFIX") ?: "./tmp/c2k48_");
 
 // the handler never runs in practice but not having one makes the script
@@ -104,10 +105,10 @@ class BlockAnims {
 			$stylist->set($ent->name, "background-color", sprintf("#%02X%02X%02X", ...$ent->fake['color']));
 			[$x, $y] = $ent->fake['pos'];
 			$stylist->set($ent->name, "left", sprintf("%f%%", ($x / $w) * 100));
-			$stylist->set($ent->name, "top", sprintf("%f%%", ($y / $w) * 100));
+			$stylist->set($ent->name, "top", sprintf("%f%%", ($y / $h) * 100));
 			$stylist->set($ent->name, "width", sprintf("%f%%", (1 / $w) * 100));
 			$stylist->set($ent->name, "height", sprintf("%f%%", (1 / $h) * 100));
-			$stylist->set($ent->name, "font-size", "2em");
+			$stylist->set($ent->name, "font-size", "0");
 			$ent->num->draw($ent->fake['value']);
 		}
 	}
@@ -127,6 +128,7 @@ const MOVES = [
 ];
 
 function game(&$quitf) {
+	$timer = new DTimer();
 	global $alive;
 	$uid = bin2hex(random_bytes(8));
 	$dir = DIR . hash("sha256", $uid);
@@ -156,10 +158,15 @@ function game(&$quitf) {
 		$stylist->set("#cbd$cmd", "grid-row-start", $y);
 		$stylist->set("#cbd$cmd", "grid-column-start", $x);
 	}
-	$statusl .= "<div>";
-	$tlab = new CursedNumber($stylist, "tcc", appendf($statusl));
-	$statusl .= " fps</div><div id=win>You won!</div><div>score: ";
-	$scor = new CursedNumber($stylist, "scc", appendf($statusl));
+	$statusl .= "<div class=fps>";
+	$statuslf=appendf($statusl);
+	$tlab = new CursedNumber($stylist, "tcc", $statuslf,4);
+	$statusl .= " fps, ";
+	$btlab = new CursedNumber($stylist,"btc",$statuslf,4);
+	$statusl.="B tx (";
+	$blab = new CursedNumber($stylist, "bcc", $statuslf,4);
+	$statusl.= "B/s)</div><div id=win>You won!</div><div>score: ";
+	$scor = new CursedNumber($stylist, "scc", $statuslf);
 	$tlab->draw(0);
 	$scor->draw(0);
 	$game = new x1p11(4, 4);
@@ -172,9 +179,15 @@ function game(&$quitf) {
 	$stylist->set("#win", "display", "none");
 	$stylist->set("#die", "display", "none");
 	$stylist->present();
+	$styles.="<style>\n";
+	for($csize=1;$csize<=100;$csize*=1.1){
+		$fsize=$csize/3;
+		$styles.=sprintf("@container cell (min-width: %svw){div{font-size:%svw}}\n",fnumfitweak($csize,4,0),fnumfitweak($fsize,4,0));
+	}
+	$styles.="</style>\n";
 	$headch = <<<Eof
 	<!DOCTYPE html>
-	<head><meta name="viewport" content="width=device-width" /><title>2048.php</title></head>
+	<head><meta name="viewport" content="width=device-width" /><title>2048.php</title></head><body>
 	<style>
 	body,html{width:100%;height:100%;margin:0;padding:0;font-size:min(1em,3vmin)}
 	#cont{display:flex;width:100%;height:100%;flex-direction:row;}
@@ -193,6 +206,8 @@ function game(&$quitf) {
 	#con{display:grid;aspect-ratio:1;}
 	.conbc{width:100%;height:100%;}
 	.conb{font-size:1em;width:100%;height:100%}
+	.b{container-name:cell;container-type:size;user-select:none}
+	.fps{font-size:0.7em}
 	form{display:none}
 	</style>
 	$styles<iframe id=if name=out></iframe>
@@ -210,9 +225,13 @@ function game(&$quitf) {
 
 	Eof;
 	unset($styles, $elems, $cons, $statusl);
-	$stwrite = 'chunk';
-	chunk($headch);
-	$timer = new DTimer();
+	$datas=0;
+	$datotal=0;
+	$stwrite = function($data)use(&$datas){
+		chunk($data);
+		$datas+=strlen($data);
+	};
+	$stwrite($headch);
 	$score = 0;
 	$lost = false;
 	$won = false;
@@ -230,23 +249,26 @@ function game(&$quitf) {
 		}
 	});
 	$t = 0;
-	$tt = (int) (1000_000 / 30);
+	$tt = (int) (1000_000 / 60);
 	$hidden = false;
-	$hidt = 1;
+	$tofpsu=0;
+	$todu=0;
+	$toforce=0;
 	$tod = 10;
 	$ii = 2;
+	$avgdata=new Averager;
+	$avgfps=new Averager;
 	while (1) {
 		$dt = $timer->tick();
+		$avgfps->push(1/$dt,$dt);
+		$avgdata->push($datas/$dt,$dt);
+		$datotal+=$datas;
+		$datas=0;
+		$todu-=$dt;
+		$tofpsu-=$dt;
+		$toforce-=$dt;
 		$t += $dt;
-		$tlab->draw(1 / $dt);
-		$gamer->draw($dt);
-		$scor->draw($score);
-		$hidt -= $dt;
 		$tod -= $dt;
-		if ($hidt <= 0) {
-			$hidden = !$hidden;
-			$hidt = 0.5;
-		}
 		//$stylist->set("#board","display",$hidden?"none":"block");
 		//$stylist->set("#board", "width", ((sin($t) + 1) / 2 * 25) . 'em');
 		//chunk("<!--".str_repeat("-",4096*1024)."-->"); // stress test
@@ -263,21 +285,34 @@ function game(&$quitf) {
 				}
 			}
 		}
-		$stylist->present();
+		if($tofpsu<=0) {
+			$tlab->draw(round($avgfps->avg(1)));
+			$tofpsu=1;
+		}
+		if($todu<=0){
+			$blab->draw($avgdata->avg(5));
+			$btlab->draw($datotal);
+			$todu=5;
+		}
+		$gamer->draw($dt);
+		$scor->draw($score);
+		if($stylist->present($toforce<=0)){
+			$toforce=2;
+		}
 		if (connection_aborted() || !$alive) {
 			error_log("bye!");
 			return;
 		}
-		if ($tod <= 0) {
-			//break;
+		if ($lost) {
+			break;
 		}
-		usleep(floor(max($tt - $dt, 0)));
+		usleep(floor(max($tt - $timer->tick(true)*1000_000, 0)));
 		//if(--$ii==0){ break; }
 	}
-	chunk(<<<Eof
-	<meta http-equiv="refresh" content="0">
-
-	Eof);
+	$tlab->draw(0);
+	$blab->draw(0);
+	$stylist->present();
+	chunk("</body>");
 	chunk_end();
 };
 $path = explode('/', $_SERVER["REQUEST_URI"]);
