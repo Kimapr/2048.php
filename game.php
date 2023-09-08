@@ -28,6 +28,7 @@ class x1p11 {
 	private $lost;
 	private $score;
 	private $handlers;
+	private $mid;
 	private function pos($x, $y) {
 		return $this->w * $y + $x;
 	}
@@ -202,10 +203,11 @@ class x1p11 {
 			$handler(BoardEventType::Lose, (object) []);
 		}
 	}
-	private function handler(...$a) {
-		$this->apply(...$a);
+	private function handler($type, $event) {
+		$event->mid = $this->mid;
+		$this->apply($type, $event);
 		foreach ($this->handlers as $f) {
-			$f(...$a);
+			$f($type, $event);
 		}
 	}
 
@@ -215,6 +217,7 @@ class x1p11 {
 		$this->freeds = [];
 		$this->ents = [];
 		$this->handlers = new SplObjectStorage();
+		$this->mid = 0;
 		$this->won = false;
 		$this->lost = false;
 		$this->score = 0;
@@ -267,6 +270,7 @@ class x1p11 {
 		$this->handlers->detach($handler);
 	}
 	public function move(Direction $dir) {
+		$this->mid++;
 		$this->_move([$this, 'handler'], $dir);
 	}
 	public function get(int $x, int $y) {

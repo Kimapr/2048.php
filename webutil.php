@@ -36,9 +36,9 @@ function chunk_end() {
 	chunk("");
 }
 
-function obcapture(Callable $f) {
+function obcapture(Callable $f, ...$a) {
 	ob_start();
-	$f();
+	$f(...$a);
 	return ob_get_clean();
 }
 

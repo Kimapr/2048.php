@@ -19,29 +19,71 @@ $chunking = false;
 
 class BlockAnims {
 	private $stylist;
-	private $stack;
-	private $buf;
 	private $name;
 	private $ents;
-	private $t;
-	//private $loaded;
 	private $game;
 	private $handler;
+	private $anstack;
+	private $antime;
+	private $anbuf;
+	private $anlayer;
+	private $ancur;
+	private $lmid;
+	private $lanes;
 	private static function valcolor($v) {
+		if ($v < 2) {
+			$c = self::valcolor(2);
+			$c[3] = floor(max($v, 0) / 2 * 255);
+			return $c;
+		}
 		$orv = $v;
 		$v = log($v, 2);
 		$h = (cos(($v ** 0.8) * M_PI / 11 * 3) / 2 + 0.5);
 		$cv = (cos((($v - 1) ** 0.7 / 4) * M_PI) / 2 + 0.5);
 		$c = hsvcol(1 / 12 + (1 / 12) * $h, 1 - $cv * 0.6, 1);
 		$c = array_map(fn($c) => round($c * 255), $c);
+		$c[4] = 255;
 		return $c;
+	}
+	private function animflush($layer) {
+		if ($this->anlayer) {
+			$anim = (object) [];
+			$anim->len = $this->anlayer == "spawn" ? 0.1 : 1;
+			$anim->t = 0;
+			$anim->anims = $this->anbuf;
+			$this->anstack->push($anim);
+			$this->antime += $anim->len;
+		}
+		$this->anlayer = $layer;
+		$this->anbuf = $layer ? [] : null;
+	}
+	private function animpush($layer, $anim) {
+		if ($this->anlayer != $layer) {
+			$this->animflush($layer);
+		}
+		array_push($this->anbuf, $anim);
+	}
+	private function newz($lid) {
+		if (!isset($this->lanes[$lid])) {
+			$this->lanes[$lid] = 1;
+		}
+		$this->lanes[$lid]--;
+		return $this->lanes[$lid];
+	}
+	public function flush() {
+		$this->animflush(false);
 	}
 	public function __construct(StyleMutator $stylist, string $name, x1p11 $game, Callable $write) {
 		[$w, $h] = $game->dimensions();
 		$entc = $w * $h;
-		$this->stack = [];
+		$this->anstack = new SplDoublyLinkedList;
+		$this->antime = 0;
+		$this->anbuf = null;
+		$this->anlayer = false;
+		$this->ancur = null;
+		$this->lmid = 0;
+		$this->lanes = null;
 		$this->name = $name;
-		//$this->loaded=false;
 		$this->game = $game;
 		$this->stylist = $stylist;
 		for ($i = 0; $i < $entc; $i++) {
@@ -51,56 +93,14 @@ class BlockAnims {
 			$ent->name = '#' . $elid;
 			$ent->num = new CursedNumber($stylist, $elid . "n", appendf($elem), 4);
 			$ent->vis = false;
-			$ent->real = ['color' => [0, 0, 0], 'pos' => [0, 0], 'z' => 0, 'value' => 0];
+			$ent->real = ['color' => [0, 0, 0, 0], 'pos' => [0, 0], 'z' => 0, 'value' => 0];
 			$ent->fake = $ent->real;
 			$elem .= "</div></div>\n";
 			$write($elem);
 			$this->ents[] = $ent;
 		}
 		$this->draw(0);
-		/*$this->handler=function($type,$event){
-				if ($type != BoardEventType::Spawn) {
-					return;
-				}
-				$value = $event->value;
-				$pos = $event->pos;
-				$ent = $this->ents[$event->id];
-				$ent->vis = true;
-				$ent->real = ['color' => self::valcolor($value), 'pos' => $pos, 'z' => 0, 'value' => $value];
-				$ent->fake = $ent->real;
-			};
-			$game->attach_handler(function(...$a){
-				return $this->handler(...$a);
-			});
-			$this->handler=function($type,$event){
-				//$realm="slide";
-				switch($type){
-				case BoardEventType::Slide:
-					$id=$event->id;
-					$ent=$this->ents[$id];
-					break;
-				case BoardEventType::Merge:
-					break;
-				case BoardEventType::Despawn:
-					throw new Exception("unimplemented");
-					break;
-				case BoardEventType::Spawn:
-					//$realm="spawn";
-					break;
-				}
-		*/
-	}
-	private function update(float $dt) {
-		if ($dt <= 0) {return;}
-		if (count($this->stack) == 0) {return;}
-		$this->t += $dt;
-	}
-	public function draw(float $dt) {
-		//$this->update($dt);
-		foreach ($this->ents as $id => $ent) {
-			$ent->vis = false;
-		}
-		$this->game->detach_handler($this->game->attach_handler(function ($type, $event) {
+		$this->handler = function ($type, $event) {
 			if ($type != BoardEventType::Spawn) {
 				return;
 			}
@@ -110,7 +110,149 @@ class BlockAnims {
 			$ent->vis = true;
 			$ent->real = ['color' => self::valcolor($value), 'pos' => $pos, 'z' => 0, 'value' => $value];
 			$ent->fake = $ent->real;
-		}));
+		};
+		$game->attach_handler(function (...$a) {
+			return ($this->handler)(...$a);
+		});
+		$this->handler = function ($type, $event) {
+			if ($event->mid != $this->lmid) {
+				$this->lmid = $event->mid;
+				$this->lanes = [];
+			}
+			switch ($type) {
+			case BoardEventType::Slide:
+				$id = $event->id;
+				$lane = $event->lane;
+				$pos = $event->pos;
+				$ent = $this->ents[$id];
+				$this->animpush("slide", (object) [
+					'id' => $id,
+					'z' => $this->newz($lane),
+					'pos' => [$ent->real["pos"], $pos],
+				]);
+				$ent->real['pos'] = $pos;
+				break;
+			case BoardEventType::Merge:
+				$src = $event->src;
+				$dest = $event->dest;
+				$lane = $event->lane;
+				$srce = $this->ents[$src];
+				$deste = $this->ents[$dest];
+				$srcv = $srce->real['value'];
+				$destv = $deste->real['value'];
+				$this->animpush("slide", (object) [
+					'id' => $dest,
+					'z' => $this->newz($lane),
+					'value' => [$destv, $srcv + $destv],
+				]);
+				$this->animpush("slide", (object) [
+					'id' => $src,
+					'z' => $this->newz($lane),
+					'pos' => [$srce->real['pos'], $deste->real['pos']],
+					'postvis' => false,
+				]);
+				$deste->real['value'] = $destv + $srcv;
+				break;
+			case BoardEventType::Despawn:
+				$id = $event->id;
+				$ent = $this->ents[$id];
+				$this->animpush("despawn", (object) [
+					'id' => $id,
+					'value' => [$ent->real['value'], 0],
+					'postvis' => false,
+				]);
+				break;
+			case BoardEventType::Spawn:
+				$id = $event->id;
+				$value = $event->value;
+				$pos = $event->pos;
+				$ent = $this->ents[$id];
+				$this->animpush("spawn", (object) [
+					'id' => $id,
+					'value' => [0, $value],
+					'pos' => [$pos, $pos],
+					'z' => 0,
+					'previs' => true,
+				]);
+				$ent->real['value'] = $value;
+				$ent->real['pos'] = $pos;
+				break;
+			default:
+				return;
+			}
+		};
+	}
+	private static function interp($a, $b, $t) {
+		return $a * (1 - $t) + $b * $t;
+	}
+	private function update(float $dt) {
+		if (!isset($this->ancur)) {
+			if ($this->anstack->isEmpty()) {
+				return false;
+			}
+			$this->ancur = $this->anstack->shift();
+			$anime = $this->ancur;
+			$this->antime -= $anime->len;
+			foreach ($anime->anims as $anim) {
+				$ent = $this->ents[$anim->id];
+				if (isset($anim->previs)) {
+					$ent->vis = $anim->previs;
+				}
+			}
+		}
+		$anime = $this->ancur;
+		$dmul = max(($this->antime + ($anime->len - $anime->t)) * 8, 0.1);
+		$ddt = $dt * $dmul;
+		$anime->t += $ddt;
+		$t = $anime->len > 0 ? min($anime->t, $anime->len) / $anime->len : 1;
+		foreach ($anime->anims as $anim) {
+			$ent = $this->ents[$anim->id];
+			if (isset($anim->value)) {
+				$ent->fake['value'] = round(self::interp($anim->value[0], $anim->value[1], $t));
+			}
+			if (isset($anim->pos)) {
+				$ent->fake['pos'] = [
+					self::interp($anim->pos[0][0], $anim->pos[1][0], $t),
+					self::interp($anim->pos[0][1], $anim->pos[1][1], $t),
+				];
+			}
+			if (isset($anim->z)) {
+				$ent->fake['z'] = $anim->z;
+			}
+			$ent->fake['color'] = $this->valcolor($ent->fake['value']);
+		}
+		if ($anime->t >= $anime->len) {
+			$dt = ($anime->t - $anime->len) / $dmul;
+			$anime->t = $anime->len;
+			foreach ($anime->anims as $anim) {
+				$ent = $this->ents[$anim->id];
+				if (isset($anim->postvis)) {
+					$ent->vis = $anim->postvis;
+				}
+			}
+			$this->ancur = null;
+			return $this->update($dt);
+		}
+		return true;
+	}
+	public function draw(float $dt) {
+		$ret = $this->update($dt);
+		/*
+			foreach ($this->ents as $id => $ent) {
+				$ent->vis = false;
+			}
+			$this->game->detach_handler($this->game->attach_handler(function ($type, $event) {
+				if ($type != BoardEventType::Spawn) {
+					return;
+				}
+				$value = $event->value;
+				$pos = $event->pos;
+				$ent = $this->ents[$event->id];
+				$ent->vis = true;
+				$ent->real = ['color' => self::valcolor($value), 'pos' => $pos, 'z' => 0, 'value' => $value];
+				$ent->fake = $ent->real;
+			}));
+		*/
 		[$w, $h] = $this->game->dimensions();
 		$stylist = $this->stylist;
 		foreach ($this->ents as $id => $ent) {
@@ -119,7 +261,7 @@ class BlockAnims {
 			$stylist->set($ent->name, "justify-content", "center");
 			$stylist->set($ent->name, "align-items", "center");
 			$stylist->set($ent->name, "position", "absolute");
-			$stylist->set($ent->name, "background-color", sprintf("#%02X%02X%02X", ...$ent->fake['color']));
+			$stylist->set($ent->name, "background-color", sprintf("#%02X%02X%02X%02X", ...$ent->fake['color']));
 			[$x, $y] = $ent->fake['pos'];
 			$stylist->set($ent->name, "left", sprintf("%f%%", ($x / $w) * 100));
 			$stylist->set($ent->name, "top", sprintf("%f%%", ($y / $h) * 100));
@@ -128,12 +270,7 @@ class BlockAnims {
 			$stylist->set($ent->name, "font-size", "0");
 			$ent->num->draw($ent->fake['value']);
 		}
-	}
-	public function mstart() {
-		$this->buf = [];
-	}
-	public function mend() {
-		array_push($this->stack, array_values($this->buf));
+		return $ret;
 	}
 }
 
@@ -193,7 +330,8 @@ function game(&$quitf) {
 		for($i=0;$i<$w*$h;$i++){
 			$game->set($i%$w,floor($i/$w),2**($i+1));
 		}
-	*/
+		$game->set(1,0,2);
+	//*/
 	$gamer = new BlockAnims($stylist, "gg", $game, appendf($elems));
 	$statusl .= "</div>";
 	unset($cmd, $label);
@@ -272,7 +410,7 @@ function game(&$quitf) {
 		}
 	});
 	$t = 0;
-	$tt = (int) (1000_000 / 60);
+	$tt = (int) (1000_000 / 30);
 	$hidden = false;
 	$tofpsu = 0;
 	$todu = 0;
@@ -299,6 +437,7 @@ function game(&$quitf) {
 		while (socket_recv($socket, $buf, 65536, 0) != false) {
 			if (MOVES[$buf]) {
 				$game->move(MOVES[$buf]);
+				$gamer->flush();
 				if ($lost) {
 					$stylist->set("#con", "display", "none");
 					$stylist->set("#die", "display", "initial");
@@ -317,7 +456,7 @@ function game(&$quitf) {
 			$btlab->draw($datotal);
 			$todu = 5;
 		}
-		$gamer->draw($dt);
+		$animating = $gamer->draw($dt);
 		$scor->draw($score);
 		if ($stylist->present($toforce <= 0)) {
 			$toforce = 2;
@@ -326,7 +465,7 @@ function game(&$quitf) {
 			error_log("bye!");
 			return;
 		}
-		if ($lost) {
+		if ($lost && !$animating) {
 			break;
 		}
 		usleep(floor(max($tt - $timer->tick(true) * 1000_000, 0)));
