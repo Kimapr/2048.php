@@ -48,10 +48,10 @@ class DTimer {
 		$this->last = 0;
 		$this->tick();
 	}
-	public function tick(bool $soft=false) {
+	public function tick(bool $soft = false) {
 		$cur = hrtime(true);
 		$dt = $cur - $this->last;
-		if(!$soft){
+		if (!$soft) {
 			$this->last = $cur;
 		}
 		return $dt / 1000_000_000;
@@ -59,32 +59,64 @@ class DTimer {
 }
 
 class Averager {
-	private $v,$w,$n;
-	public function __construct(){
-		$this->l=null;
+	private $v, $w, $n;
+	public function __construct() {
+		$this->l = null;
 	}
-	public function push($v,$w){
-		$l=new self;
-		[$l->v,$l->w,$l->n]=[$v,$w,$this->n];
-		$this->n=$l;
+	public function push($v, $w) {
+		$l = new self;
+		[$l->v, $l->w, $l->n] = [$v, $w, $this->n];
+		$this->n = $l;
 	}
 	public function avg($maxw) {
-		$w=0;$v=0;
-		for($l=$this->n;isset($l);$l=$l->n){
-			$lw=min($l->w,$maxw-$w);
-			$w+=$lw;
-			$v+=$l->v*$lw;
-			if($w>=$maxw){
-				$l->n=null;
+		$w = 0;
+		$v = 0;
+		for ($l = $this->n;isset($l); $l = $l->n) {
+			$lw = min($l->w, $maxw - $w);
+			$w += $lw;
+			$v += $l->v * $lw;
+			if ($w >= $maxw) {
+				$l->n = null;
 				break;
 			}
 		}
-		return $v/$w;
+		return $v / $w;
 	}
 }
 
 function appendf(&$s) {return function ($a) use (&$s) {$s .= $a;};}
 function callf(&$f) {return function (...$a) use (&$f) {return $f(...$a);};}
+
+function hsvcol($h, $s, $v) {
+	$c = $v * $s;
+	$h = fmod($h * 6, 6);
+	$x = $c * (1 - abs(fmod($h, 2) - 1));
+	$h = floor($h);
+	$r = [0, 0, 0];
+	switch ($h) {
+	case 0:
+		$r = [$c, $x, 0];
+		break;
+	case 1:
+		$r = [$x, $c, 0];
+		break;
+	case 2:
+		$r = [0, $c, $x];
+		break;
+	case 3:
+		$r = [0, $x, $c];
+		break;
+	case 4:
+		$r = [$x, 0, $c];
+		break;
+	case 5:
+		$r = [$c, 0, $x];
+		break;
+	}
+	$m = $v - $c;
+	$r = array_map(function ($n) use ($m) {return $n + $m;}, $r);
+	return $r;
+}
 
 class StyleMutator {
 	private $current;
@@ -106,7 +138,7 @@ class StyleMutator {
 			unset($this->dirty[$k][$i]);
 		}
 	}
-	public function present($force=false) {
+	public function present($force = false) {
 		$str = "<style>%s</style>\n";
 		$byval = [];
 		foreach ($this->dirty as $k => $l) {
@@ -117,15 +149,15 @@ class StyleMutator {
 		foreach ($byval as $v => $l) {
 			$byval[$v] = sprintf("%s{%s}", implode(',', $l), $v);
 		}
-		$byval=implode('',$byval);
-		$written=false;
-		if(strlen($byval)>0){
+		$byval = implode('', $byval);
+		$written = false;
+		if (strlen($byval) > 0) {
 			($this->write)(sprintf($str, $byval));
-			$written=true;
+			$written = true;
 		}
-		if($force&&!$written){
+		if ($force && !$written) {
 			($this->write)("<!---->\n");
-			$written=true;
+			$written = true;
 		}
 		foreach ($this->dirty as $k => $l) {
 			foreach ($l as $i => $v) {
@@ -161,11 +193,11 @@ const SI_SMALLER = [
 	['q', 1000 ** -9],
 ];
 
-function fnumfitweak($n, $m, $trim=true) {
+function fnumfitweak($n, $m, $trim = true) {
 	$dd = max($m - strlen(sprintf("%.0f", floor($n))) - 1, 0);
 	$s = sprintf("%.{$dd}f", $n);
-	if($trim) {
-		$s = rtrim(preg_replace('/(\.)([0-9]*?)(0*)$/','\1\2',$s),'.');
+	if ($trim) {
+		$s = rtrim(preg_replace('/(\.)([0-9]*?)(0*)$/', '\1\2', $s), '.');
 	}
 	return $s == '' ? '0' : $s;
 }

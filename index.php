@@ -26,8 +26,15 @@ class BlockAnims {
 	private $t;
 	//private $loaded;
 	private $game;
+	private $handler;
 	private static function valcolor($v) {
-		return [255, floor(max(200 - ((log($v, 2) / 11) ** 1) * 200, 0)), floor(max(120 - ((log($v, 2) / 11) ** 1) * 120, 0))];
+		$orv = $v;
+		$v = log($v, 2);
+		$h = (cos(($v ** 0.8) * M_PI / 11 * 3) / 2 + 0.5);
+		$cv = (cos((($v - 1) ** 0.7 / 4) * M_PI) / 2 + 0.5);
+		$c = hsvcol(1 / 12 + (1 / 12) * $h, 1 - $cv * 0.6, 1);
+		$c = array_map(fn($c) => round($c * 255), $c);
+		return $c;
 	}
 	public function __construct(StyleMutator $stylist, string $name, x1p11 $game, Callable $write) {
 		[$w, $h] = $game->dimensions();
@@ -42,7 +49,7 @@ class BlockAnims {
 			$elid = $name . dechex($i);
 			$elem = "<div class=b id=$elid><div>";
 			$ent->name = '#' . $elid;
-			$ent->num = new CursedNumber($stylist, $elid . "n", appendf($elem), 5);
+			$ent->num = new CursedNumber($stylist, $elid . "n", appendf($elem), 4);
 			$ent->vis = false;
 			$ent->real = ['color' => [0, 0, 0], 'pos' => [0, 0], 'z' => 0, 'value' => 0];
 			$ent->fake = $ent->real;
@@ -51,26 +58,36 @@ class BlockAnims {
 			$this->ents[] = $ent;
 		}
 		$this->draw(0);
-		/*$game->attach_handler(function($type,$event){
-				if($this->loaded){
-					//$realm="slide";
-					switch($type){
-					case BoardEventType::Slide:
-						$id=$event->id;
-						$ent=$this->ents[$id];
-						break;
-					case BoardEventType::Merge:
-						break;
-					case BoardEventType::Despawn:
-						throw new Exception("unimplemented");
-						break;
-					case BoardEventType::Spawn:
-						//$realm="spawn";
-						break;
-					}
-				}else{
+		/*$this->handler=function($type,$event){
+				if ($type != BoardEventType::Spawn) {
+					return;
 				}
+				$value = $event->value;
+				$pos = $event->pos;
+				$ent = $this->ents[$event->id];
+				$ent->vis = true;
+				$ent->real = ['color' => self::valcolor($value), 'pos' => $pos, 'z' => 0, 'value' => $value];
+				$ent->fake = $ent->real;
+			};
+			$game->attach_handler(function(...$a){
+				return $this->handler(...$a);
 			});
+			$this->handler=function($type,$event){
+				//$realm="slide";
+				switch($type){
+				case BoardEventType::Slide:
+					$id=$event->id;
+					$ent=$this->ents[$id];
+					break;
+				case BoardEventType::Merge:
+					break;
+				case BoardEventType::Despawn:
+					throw new Exception("unimplemented");
+					break;
+				case BoardEventType::Spawn:
+					//$realm="spawn";
+					break;
+				}
 		*/
 	}
 	private function update(float $dt) {
@@ -128,6 +145,7 @@ const MOVES = [
 ];
 
 function game(&$quitf) {
+	error_log("hai :3");
 	$timer = new DTimer();
 	global $alive;
 	$uid = bin2hex(random_bytes(8));
@@ -159,19 +177,24 @@ function game(&$quitf) {
 		$stylist->set("#cbd$cmd", "grid-column-start", $x);
 	}
 	$statusl .= "<div class=fps>";
-	$statuslf=appendf($statusl);
-	$tlab = new CursedNumber($stylist, "tcc", $statuslf,4);
+	$statuslf = appendf($statusl);
+	$tlab = new CursedNumber($stylist, "tcc", $statuslf, 4);
 	$statusl .= " fps, ";
-	$btlab = new CursedNumber($stylist,"btc",$statuslf,4);
-	$statusl.="B tx (";
-	$blab = new CursedNumber($stylist, "bcc", $statuslf,4);
-	$statusl.= "B/s)</div><div id=win>You won!</div><div>score: ";
+	$btlab = new CursedNumber($stylist, "btc", $statuslf, 4);
+	$statusl .= "B tx (";
+	$blab = new CursedNumber($stylist, "bcc", $statuslf, 4);
+	$statusl .= "B/s)</div><div id=win>You won!</div><div>score: ";
 	$scor = new CursedNumber($stylist, "scc", $statuslf);
 	$tlab->draw(0);
 	$scor->draw(0);
 	$game = new x1p11(4, 4);
-	$gamer = new BlockAnims($stylist, "gg", $game, appendf($elems));
 	[$w, $h] = $game->dimensions();
+	/*
+		for($i=0;$i<$w*$h;$i++){
+			$game->set($i%$w,floor($i/$w),2**($i+1));
+		}
+	*/
+	$gamer = new BlockAnims($stylist, "gg", $game, appendf($elems));
 	$statusl .= "</div>";
 	unset($cmd, $label);
 	$bvalc = 16;
@@ -179,12 +202,12 @@ function game(&$quitf) {
 	$stylist->set("#win", "display", "none");
 	$stylist->set("#die", "display", "none");
 	$stylist->present();
-	$styles.="<style>\n";
-	for($csize=1;$csize<=100;$csize*=1.1){
-		$fsize=$csize/3;
-		$styles.=sprintf("@container cell (min-width: %svw){div{font-size:%svw}}\n",fnumfitweak($csize,4,0),fnumfitweak($fsize,4,0));
+	$styles .= "<style>\n";
+	for ($csize = 1; $csize <= 100; $csize *= 1.1) {
+		$fsize = $csize / 3;
+		$styles .= sprintf("@container cell (min-width: %svw){div{font-size:%svw}}\n", fnumfitweak($csize, 4, 0), fnumfitweak($fsize, 4, 0));
 	}
-	$styles.="</style>\n";
+	$styles .= "</style>\n";
 	$headch = <<<Eof
 	<!DOCTYPE html>
 	<head><meta name="viewport" content="width=device-width" /><title>2048.php</title></head><body>
@@ -225,11 +248,11 @@ function game(&$quitf) {
 
 	Eof;
 	unset($styles, $elems, $cons, $statusl);
-	$datas=0;
-	$datotal=0;
-	$stwrite = function($data)use(&$datas){
+	$datas = 0;
+	$datotal = 0;
+	$stwrite = function ($data) use (&$datas) {
 		chunk($data);
-		$datas+=strlen($data);
+		$datas += strlen($data);
 	};
 	$stwrite($headch);
 	$score = 0;
@@ -251,22 +274,22 @@ function game(&$quitf) {
 	$t = 0;
 	$tt = (int) (1000_000 / 60);
 	$hidden = false;
-	$tofpsu=0;
-	$todu=0;
-	$toforce=0;
+	$tofpsu = 0;
+	$todu = 0;
+	$toforce = 0;
 	$tod = 10;
 	$ii = 2;
-	$avgdata=new Averager;
-	$avgfps=new Averager;
+	$avgdata = new Averager;
+	$avgfps = new Averager;
 	while (1) {
 		$dt = $timer->tick();
-		$avgfps->push(1/$dt,$dt);
-		$avgdata->push($datas/$dt,$dt);
-		$datotal+=$datas;
-		$datas=0;
-		$todu-=$dt;
-		$tofpsu-=$dt;
-		$toforce-=$dt;
+		$avgfps->push(1 / $dt, $dt);
+		$avgdata->push($datas / $dt, $dt);
+		$datotal += $datas;
+		$datas = 0;
+		$todu -= $dt;
+		$tofpsu -= $dt;
+		$toforce -= $dt;
 		$t += $dt;
 		$tod -= $dt;
 		//$stylist->set("#board","display",$hidden?"none":"block");
@@ -285,19 +308,19 @@ function game(&$quitf) {
 				}
 			}
 		}
-		if($tofpsu<=0) {
+		if ($tofpsu <= 0) {
 			$tlab->draw(round($avgfps->avg(1)));
-			$tofpsu=1;
+			$tofpsu = 1;
 		}
-		if($todu<=0){
+		if ($todu <= 0) {
 			$blab->draw($avgdata->avg(5));
 			$btlab->draw($datotal);
-			$todu=5;
+			$todu = 5;
 		}
 		$gamer->draw($dt);
 		$scor->draw($score);
-		if($stylist->present($toforce<=0)){
-			$toforce=2;
+		if ($stylist->present($toforce <= 0)) {
+			$toforce = 2;
 		}
 		if (connection_aborted() || !$alive) {
 			error_log("bye!");
@@ -306,7 +329,7 @@ function game(&$quitf) {
 		if ($lost) {
 			break;
 		}
-		usleep(floor(max($tt - $timer->tick(true)*1000_000, 0)));
+		usleep(floor(max($tt - $timer->tick(true) * 1000_000, 0)));
 		//if(--$ii==0){ break; }
 	}
 	$tlab->draw(0);
