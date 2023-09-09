@@ -1,5 +1,7 @@
 <?php
 
+$chunking = false;
+
 function chunk_start() {
 	global $chunking;
 	if ($chunking) {

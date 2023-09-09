@@ -15,8 +15,6 @@ pcntl_signal(SIGTERM, function () {
 	error_log("bai!");
 });
 
-$chunking = false;
-
 class BlockAnims {
 	private $stylist;
 	private $name;
@@ -314,8 +312,11 @@ function game(&$quitf) {
 	$game = new x1p11(4, 4);
 	[$w, $h] = $game->dimensions();
 	/*
+		$game = new x1p11(16, 16);
+		[$w, $h] = $game->dimensions();
 		for($i=0;$i<$w*$h;$i++){
-			$game->set($i%$w,floor($i/$w),2**($i+1));
+			//$game->set($i%$w,floor($i/$w),2**($i+1));
+			$game->set($i%$w,floor($i/$w),1.1**$i-1);
 		}
 		//$game->set(1,0,2);
 	//*/
