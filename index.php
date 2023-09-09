@@ -40,10 +40,10 @@ class BlockAnims {
 		$v = log($v, 2);
 		$h = (cos(($v ** 0.8) * M_PI / 11 * 3) / 2 + 0.5);
 		$cv = (cos((($v - 1) ** 0.7 / 4) * M_PI) / 2 + 0.5);
-		$clv = max(1,$orv-2**11);
-		$bs = cos((($v-11))*M_PI/40+1*M_PI)/2+0.5;
-		$bv = 1-(($clv**(-log($clv)/400)));
-		$c = hsvcol(1 / 12 + (1 / 12) * $h * (1-$bv) + 1/3*($bv) + 1/6*$bv*$bs, 1 - $cv * 0.6 * (1-$bv), 1);
+		$clv = max(1, $orv - 2 ** 11);
+		$bs = cos((($v - 11)) * M_PI / 40 + 1 * M_PI) / 2 + 0.5;
+		$bv = 1 - (($clv ** (-log($clv) / 400)));
+		$c = hsvcol(1 / 12 + (1 / 12) * $h * (1 - $bv) + 1 / 3 * ($bv) + 1 / 6 * $bv * $bs, 1 - $cv * 0.6 * (1 - $bv), 1);
 		$c = array_map(fn($c) => round($c * 255), $c);
 		$c[3] = 255;
 		return $c;
@@ -211,7 +211,7 @@ class BlockAnims {
 		foreach ($anime->anims as $anim) {
 			$ent = $this->ents[$anim->id];
 			if (isset($anim->value)) {
-				$ent->fake['value'] = round(self::interp($anim->value[0], $anim->value[1], $t**-16),1);
+				$ent->fake['value'] = self::interp($anim->value[0], $anim->value[1], $t ** (-4));
 			}
 			if (isset($anim->pos)) {
 				$ent->fake['pos'] = [
@@ -255,7 +255,7 @@ class BlockAnims {
 			$stylist->set($ent->name, "width", sprintf("%f%%", (1 / $w) * 100));
 			$stylist->set($ent->name, "height", sprintf("%f%%", (1 / $h) * 100));
 			$stylist->set($ent->name, "font-size", "0");
-			$ent->num->draw($ent->fake['value']);
+			$ent->num->draw(round($ent->fake['value']));
 		}
 		return $ret;
 	}
