@@ -281,7 +281,7 @@ class x1p11 {
 		}
 		return $this->ents[$id]->value;
 	}
-	public function set(int $x, int $y, ?int $value = null) {
+	public function set(int $x, int $y, ?float $value = null) {
 		$pos = $this->pos($x, $y);
 		$id = $this->board[$pos];
 		if ($id != -1) {

@@ -40,9 +40,12 @@ class BlockAnims {
 		$v = log($v, 2);
 		$h = (cos(($v ** 0.8) * M_PI / 11 * 3) / 2 + 0.5);
 		$cv = (cos((($v - 1) ** 0.7 / 4) * M_PI) / 2 + 0.5);
-		$c = hsvcol(1 / 12 + (1 / 12) * $h, 1 - $cv * 0.6, 1);
+		$clv = max(1,$orv-2**11);
+		$bs = cos((($v-11))*M_PI/40+1*M_PI)/2+0.5;
+		$bv = 1-(($clv**(-log($clv)/400)));
+		$c = hsvcol(1 / 12 + (1 / 12) * $h * (1-$bv) + 1/3*($bv) + 1/6*$bv*$bs, 1 - $cv * 0.6 * (1-$bv), 1);
 		$c = array_map(fn($c) => round($c * 255), $c);
-		$c[4] = 255;
+		$c[3] = 255;
 		return $c;
 	}
 	private function animflush($layer) {
@@ -208,7 +211,7 @@ class BlockAnims {
 		foreach ($anime->anims as $anim) {
 			$ent = $this->ents[$anim->id];
 			if (isset($anim->value)) {
-				$ent->fake['value'] = round(self::interp($anim->value[0], $anim->value[1], $t));
+				$ent->fake['value'] = round(self::interp($anim->value[0], $anim->value[1], $t**-16),1);
 			}
 			if (isset($anim->pos)) {
 				$ent->fake['pos'] = [
@@ -237,22 +240,6 @@ class BlockAnims {
 	}
 	public function draw(float $dt) {
 		$ret = $this->update($dt);
-		/*
-			foreach ($this->ents as $id => $ent) {
-				$ent->vis = false;
-			}
-			$this->game->detach_handler($this->game->attach_handler(function ($type, $event) {
-				if ($type != BoardEventType::Spawn) {
-					return;
-				}
-				$value = $event->value;
-				$pos = $event->pos;
-				$ent = $this->ents[$event->id];
-				$ent->vis = true;
-				$ent->real = ['color' => self::valcolor($value), 'pos' => $pos, 'z' => 0, 'value' => $value];
-				$ent->fake = $ent->real;
-			}));
-		*/
 		[$w, $h] = $this->game->dimensions();
 		$stylist = $this->stylist;
 		foreach ($this->ents as $id => $ent) {
@@ -330,7 +317,7 @@ function game(&$quitf) {
 		for($i=0;$i<$w*$h;$i++){
 			$game->set($i%$w,floor($i/$w),2**($i+1));
 		}
-		$game->set(1,0,2);
+		//$game->set(1,0,2);
 	//*/
 	$gamer = new BlockAnims($stylist, "gg", $game, appendf($elems));
 	$statusl .= "</div>";
@@ -430,9 +417,6 @@ function game(&$quitf) {
 		$toforce -= $dt;
 		$t += $dt;
 		$tod -= $dt;
-		//$stylist->set("#board","display",$hidden?"none":"block");
-		//$stylist->set("#board", "width", ((sin($t) + 1) / 2 * 25) . 'em');
-		//chunk("<!--".str_repeat("-",4096*1024)."-->"); // stress test
 		$buf = '';
 		while (socket_recv($socket, $buf, 65536, 0) != false) {
 			if (MOVES[$buf]) {
@@ -469,7 +453,6 @@ function game(&$quitf) {
 			break;
 		}
 		usleep(floor(max($tt - $timer->tick(true) * 1000_000, 0)));
-		//if(--$ii==0){ break; }
 	}
 	$tlab->draw(0);
 	$blab->draw(0);
