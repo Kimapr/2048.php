@@ -1,263 +1,29 @@
 <?php
-include 'game.php';
-include 'webutil.php';
+require 'vendor/autoload.php';
+require 'lib/game.php';
+require 'lib/webutil.php';
 
 ignore_user_abort(true);
 set_time_limit(0);
-define("DIR", getenv("C2K48_TMP_PREFIX") ?: "./tmp/c2k48_");
+define("DIR", realpath(getenv("C2K48_DATA") ?: __DIR__ . "/tmp"));
 
-// the handler never runs in practice but not having one makes the script
-// terminate on connection abort. i have no idea why.
 $alive = true;
-pcntl_signal(SIGTERM, function () {
-	global $alive;
-	$alive = false;
-	error_log("bai!");
-});
 
-class BlockAnims {
-	private $stylist;
-	private $name;
-	private $ents;
-	private $game;
-	private $handler;
-	private $anstack;
-	private $antime;
-	private $anbuf;
-	private $anlayer;
-	private $ancur;
-	private $lmid;
-	private $lanes;
-	private static function valcolor($v) {
-		if ($v < 2) {
-			$c = self::valcolor(2);
-			$c[3] = floor(max($v, 0) / 2 * 255);
-			return $c;
-		}
-		$orv = $v;
-		$v = log($v, 2);
-		$h = (cos(($v ** 0.8) * M_PI / 11 * 3) / 2 + 0.5);
-		$cv = (cos((($v - 1) ** 0.7 / 4) * M_PI) / 2 + 0.5);
-		$clv = max(1, $orv - 2 ** 11);
-		$bs = cos((($v - 11)) * M_PI / 40 + 1 * M_PI) / 2 + 0.5;
-		$bv = 1 - (($clv ** (-log($clv) / 400)));
-		$c = hsvcol(1 / 12 + (1 / 12) * $h * (1 - $bv) + 1 / 3 * ($bv) + 1 / 6 * $bv * $bs, 1 - $cv * 0.6 * (1 - $bv), 1);
-		$c = array_map(fn($c) => round($c * 255), $c);
-		$c[3] = 255;
-		return $c;
-	}
-	private function animflush($layer) {
-		if ($this->anlayer) {
-			$anim = (object) [];
-			$anim->len = $this->anlayer == "spawn" ? 0.1 : 1;
-			$anim->t = 0;
-			$anim->anims = $this->anbuf;
-			$this->anstack->push($anim);
-			$this->antime += $anim->len;
-		}
-		$this->anlayer = $layer;
-		$this->anbuf = $layer ? [] : null;
-	}
-	private function animpush($layer, $anim) {
-		if ($this->anlayer != $layer) {
-			$this->animflush($layer);
-		}
-		array_push($this->anbuf, $anim);
-	}
-	private function newz($lid) {
-		if (!isset($this->lanes[$lid])) {
-			$this->lanes[$lid] = 1;
-		}
-		$this->lanes[$lid]--;
-		return $this->lanes[$lid];
-	}
-	public function flush() {
-		$this->animflush(false);
-	}
-	public function __construct(StyleMutator $stylist, string $name, x1p11 $game, Callable $write) {
-		[$w, $h] = $game->dimensions();
-		$entc = $w * $h;
-		$this->anstack = new SplDoublyLinkedList;
-		$this->antime = 0;
-		$this->anbuf = null;
-		$this->anlayer = false;
-		$this->ancur = null;
-		$this->lmid = 0;
-		$this->lanes = null;
-		$this->name = $name;
-		$this->game = $game;
-		$this->stylist = $stylist;
-		for ($i = 0; $i < $entc; $i++) {
-			$ent = (object) [];
-			$elid = $name . dechex($i);
-			$elem = "<div class=b id=$elid><div>";
-			$ent->name = '#' . $elid;
-			$ent->num = new CursedNumber($stylist, $elid . "n", appendf($elem), 4);
-			$ent->vis = false;
-			$ent->real = ['color' => [0, 0, 0, 0], 'pos' => [0, 0], 'z' => 0, 'value' => 0];
-			$ent->fake = $ent->real;
-			$elem .= "</div></div>\n";
-			$write($elem);
-			$this->ents[] = $ent;
-		}
-		$this->draw(0);
-		$this->handler = function ($type, $event) {
-			if ($type != BoardEventType::Spawn) {
-				return;
-			}
-			$value = $event->value;
-			$pos = $event->pos;
-			$ent = $this->ents[$event->id];
-			$ent->vis = true;
-			$ent->real = ['color' => self::valcolor($value), 'pos' => $pos, 'z' => 0, 'value' => $value];
-			$ent->fake = $ent->real;
-		};
-		$game->attach_handler(function (...$a) {
-			return ($this->handler)(...$a);
-		});
-		$this->handler = function ($type, $event) {
-			if ($event->mid != $this->lmid) {
-				$this->lmid = $event->mid;
-				$this->lanes = [];
-			}
-			switch ($type) {
-			case BoardEventType::Slide:
-				$id = $event->id;
-				$lane = $event->lane;
-				$pos = $event->pos;
-				$ent = $this->ents[$id];
-				$this->animpush("slide", (object) [
-					'id' => $id,
-					'z' => $this->newz($lane),
-					'pos' => [$ent->real["pos"], $pos],
-				]);
-				$ent->real['pos'] = $pos;
-				break;
-			case BoardEventType::Merge:
-				$src = $event->src;
-				$dest = $event->dest;
-				$lane = $event->lane;
-				$srce = $this->ents[$src];
-				$deste = $this->ents[$dest];
-				$srcv = $srce->real['value'];
-				$destv = $deste->real['value'];
-				$this->animpush("slide", (object) [
-					'id' => $dest,
-					'z' => $this->newz($lane),
-					'value' => [$destv, $srcv + $destv],
-				]);
-				$this->animpush("slide", (object) [
-					'id' => $src,
-					'z' => $this->newz($lane),
-					'pos' => [$srce->real['pos'], $deste->real['pos']],
-					'postvis' => false,
-				]);
-				$deste->real['value'] = $destv + $srcv;
-				break;
-			case BoardEventType::Despawn:
-				$id = $event->id;
-				$ent = $this->ents[$id];
-				$this->animpush("despawn", (object) [
-					'id' => $id,
-					'value' => [$ent->real['value'], 0],
-					'postvis' => false,
-				]);
-				break;
-			case BoardEventType::Spawn:
-				$id = $event->id;
-				$value = $event->value;
-				$pos = $event->pos;
-				$ent = $this->ents[$id];
-				$this->animpush("spawn", (object) [
-					'id' => $id,
-					'value' => [0, $value],
-					'pos' => [$pos, $pos],
-					'z' => 0,
-					'previs' => true,
-				]);
-				$ent->real['value'] = $value;
-				$ent->real['pos'] = $pos;
-				break;
-			default:
-				return;
-			}
-		};
-	}
-	private static function interp($a, $b, $t) {
-		return $a * (1 - $t) + $b * $t;
-	}
-	private function update(float $dt) {
-		if (!isset($this->ancur)) {
-			if ($this->anstack->isEmpty()) {
-				return false;
-			}
-			$this->ancur = $this->anstack->shift();
-			$anime = $this->ancur;
-			$this->antime -= $anime->len;
-			foreach ($anime->anims as $anim) {
-				$ent = $this->ents[$anim->id];
-				if (isset($anim->previs)) {
-					$ent->vis = $anim->previs;
-				}
+use function Amp\trapSignal;
+use function Amp\delay;
+use function Amp\async;
+
+async(function(){
+	global $alive;
+	try {
+		while(1) {
+			if (trapSignal(SIGTERM)==SIGTERM) {
+				$alive = false;
+				error_log("signal");
 			}
 		}
-		$anime = $this->ancur;
-		$dmul = max(($this->antime + ($anime->len - $anime->t)) * 8, 0.1);
-		$ddt = $dt * $dmul;
-		$anime->t += $ddt;
-		$t = $anime->len > 0 ? min($anime->t, $anime->len) / $anime->len : 1;
-		foreach ($anime->anims as $anim) {
-			$ent = $this->ents[$anim->id];
-			if (isset($anim->value)) {
-				$ent->fake['value'] = self::interp($anim->value[0], $anim->value[1], $t ** (-4));
-			}
-			if (isset($anim->pos)) {
-				$ent->fake['pos'] = [
-					self::interp($anim->pos[0][0], $anim->pos[1][0], $t),
-					self::interp($anim->pos[0][1], $anim->pos[1][1], $t),
-				];
-			}
-			if (isset($anim->z)) {
-				$ent->fake['z'] = $anim->z;
-			}
-			$ent->fake['color'] = $this->valcolor($ent->fake['value']);
-		}
-		if ($anime->t >= $anime->len) {
-			$dt = ($anime->t - $anime->len) / $dmul;
-			$anime->t = $anime->len;
-			foreach ($anime->anims as $anim) {
-				$ent = $this->ents[$anim->id];
-				if (isset($anim->postvis)) {
-					$ent->vis = $anim->postvis;
-				}
-			}
-			$this->ancur = null;
-			return $this->update($dt);
-		}
-		return true;
-	}
-	public function draw(float $dt) {
-		$ret = $this->update($dt);
-		[$w, $h] = $this->game->dimensions();
-		$stylist = $this->stylist;
-		foreach ($this->ents as $id => $ent) {
-			$stylist->set($ent->name, "display", $ent->vis ? 'flex' : 'none');
-			$stylist->set($ent->name, "z-index", $ent->fake['z']);
-			$stylist->set($ent->name, "justify-content", "center");
-			$stylist->set($ent->name, "align-items", "center");
-			$stylist->set($ent->name, "position", "absolute");
-			$stylist->set($ent->name, "background-color", sprintf("#%02X%02X%02X%02X", ...$ent->fake['color']));
-			[$x, $y] = $ent->fake['pos'];
-			$stylist->set($ent->name, "left", sprintf("%f%%", ($x / $w) * 100));
-			$stylist->set($ent->name, "top", sprintf("%f%%", ($y / $h) * 100));
-			$stylist->set($ent->name, "width", sprintf("%f%%", (1 / $w) * 100));
-			$stylist->set($ent->name, "height", sprintf("%f%%", (1 / $h) * 100));
-			$stylist->set($ent->name, "font-size", "0");
-			$ent->num->draw(round($ent->fake['value']));
-		}
-		return $ret;
-	}
-}
+	} catch (\Throwable $e) {}
+});
 
 const MOVES = [
 	'u' => Direction::Up,
@@ -271,7 +37,7 @@ function game(&$quitf) {
 	$timer = new DTimer();
 	global $alive;
 	$uid = bin2hex(random_bytes(8));
-	$dir = DIR . hash("sha256", $uid);
+	$dir = DIR . "/c2k48_" . hash("sha256", $uid);
 	$socket = socket_create(AF_UNIX, SOCK_DGRAM, 0);
 	socket_bind($socket, $dir);
 	socket_set_nonblock($socket);
@@ -444,16 +210,16 @@ function game(&$quitf) {
 		$animating = $gamer->draw($dt);
 		$scor->draw($score);
 		if ($stylist->present($toforce <= 0)) {
-			$toforce = 2;
+			$toforce = 5;
 		}
 		if (connection_aborted() || !$alive) {
-			error_log("bye!");
+			error_log($alive?"bye! (conclose)":"bye! (signal)");
 			return;
 		}
 		if ($lost && !$animating) {
 			break;
 		}
-		usleep(floor(max($tt - $timer->tick(true) * 1000_000, 0)));
+		delay(floor(max($tt - $timer->tick(true) * 1000_000, 0))/1000_000);
 	}
 	$tlab->draw(0);
 	$blab->draw(0);
@@ -461,7 +227,7 @@ function game(&$quitf) {
 	chunk("</body>");
 	chunk_end();
 };
-$path = explode('/', $_SERVER["REQUEST_URI"]);
+$path = explode('/', $_SERVER["PATH_INFO"]);
 $path = array_values(array_filter($path, function ($e) {
 	return $e != '';
 }));
@@ -474,6 +240,7 @@ if ($spath == '') {
 	<p>An implementation of the popular puzzle game <a href="https://en.wikipedia.org/wiki/2048_(video_game)">2048</a>.</p>
 	<p>As it relies heavily on progressive HTML rendering and advanced CSS features (e.g. <code>display: none</code>) it might not work in older web browsers.</p>
 	<p><a href="play">Start game</a></p>
+	<pre>
 	EOF;
 } else if ($spath == "play") {
 	$quitf = function () {};
@@ -489,7 +256,9 @@ if ($spath == '') {
 		array_shift($path);
 	}
 	if ($path[0] != "act") {
+		header("Content-type: text/plain");
 		echo "404\n";
+		print_r($_SERVER);
 		return;
 	}
 	array_shift($path);
@@ -497,7 +266,7 @@ if ($spath == '') {
 		echo "bad\n";
 		return;
 	}
-	$dir = DIR . hash("sha256", $path[0]);
+	$dir = DIR . '/c2k48_' . hash("sha256", $path[0]);
 	$socket = socket_create(AF_UNIX, SOCK_DGRAM, 0);
 	socket_sendto($socket, $path[1], strlen($path[1]), 0, $dir);
 }

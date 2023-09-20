@@ -1,2 +1,4 @@
 /http.conf
 /tmp
+/.phpdoc
+/vendor

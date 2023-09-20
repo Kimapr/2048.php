@@ -1,6 +1,6 @@
 #!/usr/bin/php
 <?php
-include 'game.php';
+require 'lib/game.php';
 
 class x1p11TextUI {
 	private $game;

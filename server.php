@@ -19,7 +19,7 @@ server.port = $port
 server.stream-response-body = 2
 server.chunkqueue-chunk-sz = 1024
 server.modules += ( "mod_cgi", "mod_rewrite" )
-url.rewrite-once = ( "^/(.*)" => "/" )
+url.rewrite-once = ( "^/(.*)" => "/index.php/$1" )
 cgi.assign = (".php" => "/usr/bin/php-cgi")
 index-file.names = ( "index.php" )
 Eof);
