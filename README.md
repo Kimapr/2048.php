@@ -13,10 +13,8 @@ CGI. Communication between the main game process and control scripts (invoked
 by form buttons targeting an invisible iframe) is done via UNIX domain datagram
 sockets. Will not work on Windows, get a real operating system.
 
-For convenience, a CLI script is provided that runs a pre-configured lighttpd
-instance:
-
-    ./server.php [address <port>]
+Run an instance with Docker Compose, an example configuration is available at
+`docker-compose.yml.example`.
 
 ## CLI
 

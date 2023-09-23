@@ -16,9 +16,20 @@ case Despawn = 3;
 case Score = 4;
 case Win = 5;
 case Lose = 6;
+
+case MoveComplete = 7;
 }
 
-class x1p11 {
+interface x1p11 {
+	public function dimensions(): array;
+	public function attach_handler(Callable $handler): mixed;
+	public function detach_handler(mixed $handler): void;
+	public function move(Direction $move): void;
+	public function get(int $x, int $y): ?float;
+	public function set(int $x, int $y, ?float $value): void;
+}
+
+class x1p11local implements x1p11 {
 	private $dirs;
 	private $board;
 	private $w, $h;
@@ -202,6 +213,7 @@ class x1p11 {
 		if ($lost) {
 			$handler(BoardEventType::Lose, (object) []);
 		}
+		$handler(BoardEventType::MoveComplete, (object) []);
 	}
 	private function handler($type, $event) {
 		$event->mid = $this->mid;
@@ -238,10 +250,10 @@ class x1p11 {
 		[$this->w, $this->h] = [$w, $h];
 		$this->spawn([$this, 'apply'], $c);
 	}
-	public function dimensions() {
+	public function dimensions(): array {
 		return [$this->w, $this->h];
 	}
-	public function attach_handler(Callable $handler) {
+	public function attach_handler(Callable $handler): mixed {
 		if (!is_object($handler)) {
 			$handler = static function (...$a) use ($handler) {
 				return $handler(...$a);
@@ -254,26 +266,26 @@ class x1p11 {
 				'pos' => $ent->pos,
 				'value' => $ent->value,
 			]);
-			if ($this->won) {
-				$handler(BoardEventType::Win, (object) []);
-			}
-			if ($this->lost) {
-				$handler(BoardEventType::Lose, (object) []);
-			}
-			$handler(BoardEventType::Score, (object) [
-				'value' => $this->score,
-			]);
 		}
+		if ($this->won) {
+			$handler(BoardEventType::Win, (object) []);
+		}
+		if ($this->lost) {
+			$handler(BoardEventType::Lose, (object) []);
+		}
+		$handler(BoardEventType::Score, (object) [
+			'value' => $this->score,
+		]);
 		return $handler;
 	}
-	public function detach_handler(Callable $handler) {
+	public function detach_handler(mixed $handler): void {
 		$this->handlers->detach($handler);
 	}
-	public function move(Direction $dir) {
+	public function move(Direction $dir): void {
 		$this->mid++;
-		$this->_move([$this, 'handler'], $dir);
+		$this->_move($this->handler(...), $dir);
 	}
-	public function get(int $x, int $y) {
+	public function get(int $x, int $y): ?float {
 		$pos = $this->pos($x, $y);
 		$id = $this->board[$pos];
 		if ($this->board[$id] == -1) {
@@ -281,7 +293,7 @@ class x1p11 {
 		}
 		return $this->ents[$id]->value;
 	}
-	public function set(int $x, int $y, ?float $value = null) {
+	public function set(int $x, int $y, ?float $value = null): void {
 		$pos = $this->pos($x, $y);
 		$id = $this->board[$pos];
 		if ($id != -1) {

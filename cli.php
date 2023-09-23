@@ -187,4 +187,4 @@ if (!(is_numeric($w) && is_numeric($h) && is_numeric($c))) {
 	return;
 }
 
-new x1p11TextUI(new x1p11($w, $h, $c));
+new x1p11TextUI(new x1p11local($w, $h, $c));

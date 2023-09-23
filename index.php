@@ -2,22 +2,26 @@
 require 'vendor/autoload.php';
 require 'lib/game.php';
 require 'lib/webutil.php';
+require 'lib/net.php';
 
 ignore_user_abort(true);
 set_time_limit(0);
 define("DIR", realpath(getenv("C2K48_DATA") ?: __DIR__ . "/tmp"));
+define("SOCKPATH", DIR . "/daemon.sock");
 
 $alive = true;
 
-use function Amp\trapSignal;
-use function Amp\delay;
+use Amp\ByteStream\BufferedReader;
+use Amp\Socket;
 use function Amp\async;
+use function Amp\delay;
+use function Amp\trapSignal;
 
-async(function(){
+async(function () {
 	global $alive;
 	try {
-		while(1) {
-			if (trapSignal(SIGTERM)==SIGTERM) {
+		while (1) {
+			if (trapSignal(SIGTERM) == SIGTERM) {
 				$alive = false;
 				error_log("signal");
 			}
@@ -25,26 +29,10 @@ async(function(){
 	} catch (\Throwable $e) {}
 });
 
-const MOVES = [
-	'u' => Direction::Up,
-	'd' => Direction::Down,
-	'l' => Direction::Left,
-	'r' => Direction::Right,
-];
-
-function game(&$quitf) {
+function game($ginfo) {
 	error_log("hai :3");
 	$timer = new DTimer();
 	global $alive;
-	$uid = bin2hex(random_bytes(8));
-	$dir = DIR . "/c2k48_" . hash("sha256", $uid);
-	$socket = socket_create(AF_UNIX, SOCK_DGRAM, 0);
-	socket_bind($socket, $dir);
-	socket_set_nonblock($socket);
-	$quitf = function () use (&$socket, &$dir) {
-		socket_close($socket);
-		unlink($dir);
-	};
 	chunk_start();
 	$styles = "";
 	$cons = "";
@@ -53,13 +41,13 @@ function game(&$quitf) {
 	$stwrite = appendf($styles);
 	$stylist = new StyleMutator(callf($stwrite));
 	foreach ([
-		["l", "&lt;", 1, 2],
-		["d", "v", 2, 3],
-		["u", "^", 2, 1],
-		["r", "&gt;", 3, 2],
+		[Direction::Left->value, "&lt;", 1, 2],
+		[Direction::Down->value, "v", 2, 3],
+		[Direction::Up->value, "^", 2, 1],
+		[Direction::Right->value, "&gt;", 3, 2],
 	] as [$cmd, $label, $x, $y]) {
 		$cons .=
-			"<form method=post action=act/$uid/$cmd id=cb$cmd name=cb$cmd target=out></form>" .
+		"<form method=post action=move?" . http_build_query(["id" => $ginfo->id, "pkey" => $ginfo->pkey, "dir" => $cmd]) . " id=cb$cmd name=cb$cmd target=out></form>" .
 			"<div class=conbc id=cbd$cmd><button class=conb form=cb$cmd>$label</button></div>";
 		$stylist->set("#cbd$cmd", "grid-row-start", $y);
 		$stylist->set("#cbd$cmd", "grid-column-start", $x);
@@ -75,7 +63,7 @@ function game(&$quitf) {
 	$scor = new CursedNumber($stylist, "scc", $statuslf);
 	$tlab->draw(0);
 	$scor->draw(0);
-	$game = new x1p11(4, 4);
+	$game = $ginfo->game;
 	[$w, $h] = $game->dimensions();
 	/*
 		$game = new x1p11(16, 16);
@@ -150,19 +138,28 @@ function game(&$quitf) {
 	$score = 0;
 	$lost = false;
 	$won = false;
-	$game->attach_handler(function ($type, $event) use (&$lost, &$won, &$score) {
+	$game->attach_handler(function ($type, $event) use (&$lost, &$won, &$score, $gamer, $stylist) {
 		switch ($type) {
 		case BoardEventType::Score:
 			$score += $event->value;
 			break;
 		case BoardEventType::Win:
 			$won = true;
+			$stylist->set("#win", "display", "initial");
 			break;
 		case BoardEventType::Lose:
 			$lost = true;
+			$stylist->set("#con", "display", "none");
+			$stylist->set("#die", "display", "initial");
+			break;
+		case BoardEventType::MoveComplete:
+			$gamer->flush();
 			break;
 		}
 	});
+	if (!$ginfo->writable) {
+		$stylist->set("#con", "display", "none");
+	}
 	$t = 0;
 	$tt = (int) (1000_000 / 30);
 	$hidden = false;
@@ -185,19 +182,6 @@ function game(&$quitf) {
 		$t += $dt;
 		$tod -= $dt;
 		$buf = '';
-		while (socket_recv($socket, $buf, 65536, 0) != false) {
-			if (MOVES[$buf]) {
-				$game->move(MOVES[$buf]);
-				$gamer->flush();
-				if ($lost) {
-					$stylist->set("#con", "display", "none");
-					$stylist->set("#die", "display", "initial");
-				}
-				if ($won) {
-					$stylist->set("#win", "display", "initial");
-				}
-			}
-		}
 		if ($tofpsu <= 0) {
 			$tlab->draw(round($avgfps->avg(1)));
 			$tofpsu = 1;
@@ -213,13 +197,13 @@ function game(&$quitf) {
 			$toforce = 5;
 		}
 		if (connection_aborted() || !$alive) {
-			error_log($alive?"bye! (conclose)":"bye! (signal)");
+			error_log($alive ? "bye! (conclose)" : "bye! (signal)");
 			return;
 		}
 		if ($lost && !$animating) {
 			break;
 		}
-		delay(floor(max($tt - $timer->tick(true) * 1000_000, 0))/1000_000);
+		delay(floor(max($tt - $timer->tick(true) * 1000_000, 0)) / 1000_000);
 	}
 	$tlab->draw(0);
 	$blab->draw(0);
@@ -232,6 +216,16 @@ $path = array_values(array_filter($path, function ($e) {
 	return $e != '';
 }));
 $spath = implode('/', $path);
+parse_str($_SERVER["QUERY_STRING"], $args);
+function open_game($rpc, $name, $id, $pkey) {
+	$ginfo = $rpc->call("open_game", $name, $id, $pkey);
+	$game = new x1p11client($rpc, $name);
+	$ginfo->game = $game;
+	$ginfo->id = $id;
+	$ginfo->name = $name;
+	$ginfo->pkey = $pkey;
+	return $ginfo;
+}
 if ($spath == '') {
 	echo <<<EOF
 	<!DOCTYPE html>
@@ -239,34 +233,34 @@ if ($spath == '') {
 	<h1>2048.php</h1>
 	<p>An implementation of the popular puzzle game <a href="https://en.wikipedia.org/wiki/2048_(video_game)">2048</a>.</p>
 	<p>As it relies heavily on progressive HTML rendering and advanced CSS features (e.g. <code>display: none</code>) it might not work in older web browsers.</p>
-	<p><a href="play">Start game</a></p>
+	<p><a href="create">Start game</a></p>
 	<pre>
 	EOF;
-} else if ($spath == "play") {
-	$quitf = function () {};
-	try {
-		game($quitf);
-	} catch (\Throwable $e) {
-		error_log($e);
-	} finally {
-		$quitf();
-	}
 } else {
-	if ($path[0] == "play") {
-		array_shift($path);
+	$socket = Socket\connect("unix://" . SOCKPATH);
+	$rpc = new ObjectRPC(
+		new JsonMsgReader(new BufferedReader($socket)),
+		new JsonMsgWriter($socket)
+	);
+	async($rpc->listen(...));
+	if ($spath == "play") {
+		$ginfo = open_game($rpc, "game", $args["id"], isset($args["pkey"]) ? $args["pkey"] : "");
+		game($ginfo);
+	} else if ($spath == "move") {
+		$ginfo = open_game($rpc, "game", $args["id"], $args["pkey"]);
+		$ginfo->game->move(Direction::from($args["dir"]));
+	} else if ($spath == "create") {
+		$game = $rpc->call("new_game");
+		error_log("creating new game {$game[0]}");
+		header("Location: play?" . http_build_query(["id" => $game[0], "pkey" => $game[1]]));
+		flush();
+	} else {
+		http_response_code(404);
+		echo "not found\n";
 	}
-	if ($path[0] != "act") {
-		header("Content-type: text/plain");
-		echo "404\n";
-		print_r($_SERVER);
-		return;
+	if (isset($ginfo)) {
+		$ginfo->game->__destruct();
+		$rpc->call("close_game", $ginfo->name);
+		unset($ginfo);
 	}
-	array_shift($path);
-	if (count($path) < 2) {
-		echo "bad\n";
-		return;
-	}
-	$dir = DIR . '/c2k48_' . hash("sha256", $path[0]);
-	$socket = socket_create(AF_UNIX, SOCK_DGRAM, 0);
-	socket_sendto($socket, $path[1], strlen($path[1]), 0, $dir);
 }
