@@ -232,6 +232,7 @@ if ($spath == '') {
 	<head><title>2048</title></head>
 	<h1>2048.php</h1>
 	<p>An implementation of the popular puzzle game <a href="https://en.wikipedia.org/wiki/2048_(video_game)">2048</a>.</p>
+	<a href="https://gitlab.com/Kimapr/2048.php">Source code</a>
 	<p>As it relies heavily on progressive HTML rendering and advanced CSS features (e.g. <code>display: none</code>) it might not work in older web browsers.</p>
 	<p><a href="create">Start game</a></p>
 	<pre>
