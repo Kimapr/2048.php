@@ -12,9 +12,12 @@ define("SOCKPATH", DIR . "/daemon.sock");
 $alive = true;
 
 use Amp\ByteStream\BufferedReader;
+use Amp\CancelledException;
+use Amp\DeferredCancellation;
 use Amp\Socket;
 use function Amp\async;
 use function Amp\delay;
+use function Amp\Future\await;
 use function Amp\trapSignal;
 
 async(function () {
@@ -33,6 +36,9 @@ function game($ginfo) {
 	error_log("hai :3");
 	$timer = new DTimer();
 	global $alive;
+	$ginfo->listen->finally(function () {
+		$alive = false;
+	});
 	chunk_start();
 	$styles = "";
 	$cons = "";
@@ -210,7 +216,45 @@ function game($ginfo) {
 	$stylist->present();
 	chunk("</body>");
 	chunk_end();
-};
+}
+function mgame($ginfo) {
+	error_log("hai bot!");
+	chunk_start(200, "text/json");
+	$game = $ginfo->game;
+	$gaming = true;
+	$clock = 0;
+	$hid = $game->attach_handler(function ($type, $event) use ($game, &$gaming) {
+		chunk(json_encode([$type->name, $event]) . "\n");
+		$clock = 0;
+		if ($type == BoardEventType::Lose) {
+			$gaming = false;
+		}
+	});
+	await([
+		async(function () use (&$gaming, &$clock, $hid, $ginfo) {
+			while ($gaming && !connection_aborted()) {
+				delay(1);
+				$clock++;
+				if ($clock >= 10) {
+					$clock = 0;
+					chunk(" ");
+				}
+			}
+			error_log("closing");
+			$ginfo->game->__destruct();
+			unset($ginfo->game);
+			$ginfo->rpc->call("close_game", $ginfo->name);
+			$ginfo->cancel->cancel();
+		}),
+		$ginfo->listen->catch(function ($e) {
+			if (!is_a($e, CancelledException::class)) {
+				error_log("bad error!");
+				throw $e;
+			}
+		}),
+	]);
+	error_log("bye bot");
+}
 $path = explode('/', $_SERVER["PATH_INFO"]);
 $path = array_values(array_filter($path, function ($e) {
 	return $e != '';
@@ -219,8 +263,12 @@ $spath = implode('/', $path);
 parse_str($_SERVER["QUERY_STRING"], $args);
 function open_game($rpc, $name, $id, $pkey) {
 	$ginfo = $rpc->call("open_game", $name, $id, $pkey);
+	if ($ginfo == null) {
+		return;
+	}
 	$game = new x1p11client($rpc, $name);
 	$ginfo->game = $game;
+	$ginfo->rpc = $rpc;
 	$ginfo->id = $id;
 	$ginfo->name = $name;
 	$ginfo->pkey = $pkey;
@@ -243,23 +291,47 @@ if ($spath == '') {
 		new JsonMsgReader(new BufferedReader($socket)),
 		new JsonMsgWriter($socket)
 	);
-	async($rpc->listen(...));
-	if ($spath == "play") {
+	$cancel = new DeferredCancellation;
+	$listen = async(function ($cancel) use ($rpc) {
+		$rpc->listen($cancel);
+	}, $cancel->getCancellation());
+	if ($spath == "play" || $spath == "mplay") {
 		$ginfo = open_game($rpc, "game", $args["id"], isset($args["pkey"]) ? $args["pkey"] : "");
-		game($ginfo);
+		if ($ginfo) {
+			$ginfo->listen = $listen;
+			$ginfo->cancel = $cancel;
+			if ($spath == "play") {
+				game($ginfo);
+			} else {
+				mgame($ginfo);
+			}
+		} else {
+			http_response_code(404);
+			header("Content-type: text/plain");
+			echo "game gone.\n";
+		}
 	} else if ($spath == "move") {
+		error_log("moving {$args["dir"]}");
 		$ginfo = open_game($rpc, "game", $args["id"], $args["pkey"]);
-		$ginfo->game->move(Direction::from($args["dir"]));
+		if ($ginfo) {
+			$ginfo->game->move(Direction::from($args["dir"]));
+		} else {
+			http_response_code(404);
+			header("Content-type: text/plain");
+			echo "game gone.\n";
+		}
 	} else if ($spath == "create") {
 		$game = $rpc->call("new_game");
 		error_log("creating new game {$game[0]}");
-		header("Location: play?" . http_build_query(["id" => $game[0], "pkey" => $game[1]]));
-		flush();
+		$query = http_build_query(["id" => $game[0], "pkey" => $game[1]]);
+		header("Location: play?" . $query);
+		header("Content-type: text/plain");
+		echo $query . "\n";
 	} else {
 		http_response_code(404);
 		echo "not found\n";
 	}
-	if (isset($ginfo)) {
+	if (isset($ginfo->game)) {
 		$ginfo->game->__destruct();
 		$rpc->call("close_game", $ginfo->name);
 		unset($ginfo);

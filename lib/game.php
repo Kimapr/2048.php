@@ -139,6 +139,9 @@ class x1p11local implements x1p11 {
 		}
 	}
 	private function _move(Callable $handler, Direction $dir, bool $check = true) {
+		if ($this->lost) {
+			return false;
+		}
 		[$ox, $oy, $mc, $mb, $cdx, $cdy, $bdx, $bdy] = $this->dirs[$dir->value];
 		$moved = false;
 		for ($c = 0; $c < $mc; $c++) {

@@ -2,7 +2,7 @@
 
 $chunking = false;
 
-function chunk_start(int $code = 200) {
+function chunk_start(int $code = 200, string $content_type = "text/html; charset=utf-8") {
 	global $chunking;
 	if ($chunking) {
 		throw new Exception("already chunking");
@@ -14,7 +14,7 @@ function chunk_start(int $code = 200) {
 	}
 
 	http_response_code($code);
-	header("Content-type: text/html; charset=utf-8");
+	header("Content-type: $content_type");
 	header("X-Content-Type-Options: nosniff");
 	//header("Transfer-encoding: chunked");
 	header('X-Accel-Buffering: no');

@@ -3,6 +3,7 @@
 use Amp\ByteStream\BufferedReader;
 use Amp\ByteStream\BufferException;
 use Amp\ByteStream\WritableStream;
+use Amp\Cancellation;
 use Amp\DeferredFuture;
 use function Amp\async;
 
@@ -138,8 +139,6 @@ class x1p11server {
 					return $rpc->call($handler, $type->value, $event);
 				} catch (Exception $e) {
 					error_log($e);
-					$game->detach_handler($fids[$fi]);
-					unset($fids[$fi]);
 				}
 			});
 			return $fi++;
